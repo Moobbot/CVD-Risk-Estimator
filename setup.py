@@ -54,6 +54,25 @@ def download_file(url, folder, filename):
         logger.error(f"Error downloading file: {e}")
         return None
 
+def download_model_from_drive(file_id, destination):
+    """
+    Tải mô hình từ Google Drive
+    
+    Parameters:
+    -----------
+    file_id: str
+        ID của file trên Google Drive
+    destination: str
+        Đường dẫn lưu file
+    """
+    try:
+        import gdown
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, destination, quiet=False)
+        return True
+    except Exception as e:
+        print(f"Không thể tải mô hình từ Google Drive: {e}")
+        return False
 
 def download_and_extract_zip(url, extract_path="."):
     """

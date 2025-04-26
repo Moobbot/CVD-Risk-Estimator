@@ -20,6 +20,8 @@ import argparse
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+from setup import download_model_from_drive
+
 sys.path.append("./detector")
 
 # Cài đặt định nghĩa đường dẫn
@@ -145,6 +147,21 @@ class HeartDetector:
         """
         print("Khởi tạo detector vùng tim...")
 
+        # Kiểm tra đường dẫn mô hình có tồn tại không
+        if not os.path.exists(model_path):
+            print(f"Thư mục mô hình {model_path} không tồn tại, tạo thư mục mới.")
+            # print(f"Mô hình không tồn tại tại {model_file}, thử tải từ drive...")
+            # model_id = "1TJ4jnarnt98KygPpuqkGWj9eKQE9-aa7"  # ID của mô hình trên Google Drive
+            # if download_model_from_drive(model_id, model_file):
+            #     print(f"Đã tải mô hình thành công vào {model_file}")
+            # else:
+            #     print("Không thể tải mô hình. Sử dụng simple detector.")
+            #     self.model = None
+            try:
+                os.makedirs(model_path, exist_ok=True)
+            except Exception as e:
+                print(f"Không thể tạo thư mục: {e}")
+
         # Kiểm tra CUDA
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Sử dụng thiết bị: {self.device}")
@@ -153,12 +170,22 @@ class HeartDetector:
             # Tải mô hình RetinaNet
             model_file = os.path.join(model_path, "retinanet_heart.pt")
             if os.path.exists(model_file):
+                print(f"Đang tải mô hình từ {model_file}...")
                 self.model = torch.load(model_file, map_location=self.device)
                 self.model.eval()
                 print("Đã tải mô hình detector thành công.")
             else:
-                print(f"Không tìm thấy file mô hình: {model_file}")
-                self.model = None
+                print(f"Không tìm thấy file mô hình tại: {model_file}")
+                # Thử tìm mô hình trong thư mục hiện tại
+                alt_model_file = "retinanet_heart.pt"
+                if os.path.exists(alt_model_file):
+                    print(f"Tìm thấy mô hình tại đường dẫn thay thế: {alt_model_file}")
+                    self.model = torch.load(alt_model_file, map_location=self.device)
+                    self.model.eval()
+                    print("Đã tải mô hình detector thành công.")
+                else:
+                    print("Không tìm thấy mô hình detector.")
+                    self.model = None
         except Exception as e:
             print(f"Lỗi khi tải mô hình detector: {e}")
             print("Sử dụng simple detector...")
@@ -260,7 +287,9 @@ class HeartDetector:
         print("Đang phát hiện vùng tim...")
 
         if self.model is None:
-            # Nếu không có mô hình, sử dụng phương pháp simple detection
+            print(
+                "Không tìm thấy mô hình detector, sử dụng phương pháp simple detection."
+            )
             return self._simple_heart_detection(ct_volume)
 
         # Xử lý từng slice để tìm vùng tim
@@ -291,66 +320,296 @@ class HeartDetector:
                     # Try standard format first (returning scores, boxes)
                     output = self.model(img_tensor)
 
-                    # Check the output format and adapt accordingly
-                    if isinstance(output, tuple) and len(output) == 2:
-                        scores, boxes = output
-                    elif (
-                        isinstance(output, dict)
-                        and "scores" in output
-                        and "boxes" in output
-                    ):
-                        scores, boxes = output["scores"], output["boxes"]
-                    else:
-                        print(
-                            f"Unexpected model output format: {type(output)}. Skipping slice {i}."
-                        )
+                    # In thông tin debug về kiểu đầu ra
+                    print(f"Output type: {type(output)}")
+
+                    # Khởi tạo biến để lưu scores và boxes
+                    scores = None
+                    boxes = None
+
+                    # Xử lý dữ liệu đầu ra dựa vào kiểu
+                    if isinstance(output, tuple):
+                        # Đây là kiểu đầu ra tuple được kỳ vọng từ RetinaNet
+                        if len(output) >= 2:  # Đảm bảo có ít nhất 2 phần tử
+                            scores, boxes = output[0], output[1]
+
+                    elif isinstance(output, list):
+                        # Đầu ra là list - phổ biến trong một số mô hình
+                        if len(output) >= 2:  # Đảm bảo có ít nhất 2 phần tử
+                            # Thêm kiểm tra chi tiết về mỗi phần tử
+                            for j, item in enumerate(
+                                output[:5]
+                            ):  # Chỉ hiện thị 5 phần tử đầu
+                                print(f"  output[{j}] type: {type(item)}")
+                                if hasattr(item, "shape"):
+                                    print(f"  output[{j}] shape: {item.shape}")
+                                elif isinstance(item, (list, tuple)):
+                                    print(f"  output[{j}] length: {len(item)}")
+                                else:
+                                    print(f"  output[{j}] value: {item}")
+
+                            # Thử phân tích cấu trúc list
+                            # Đối với mô hình này, output[0] và output[1] có thể là scores và boxes
+                            try:
+                                scores_item = output[0]
+                                boxes_item = output[1]
+
+                                # Chuyển đổi sang tensor nếu cần
+                                if isinstance(scores_item, (list, np.ndarray)):
+                                    scores = torch.tensor(scores_item).to(self.device)
+                                else:
+                                    scores = scores_item
+
+                                if isinstance(boxes_item, (list, np.ndarray)):
+                                    boxes = torch.tensor(boxes_item).to(self.device)
+                                else:
+                                    boxes = boxes_item
+                            except Exception as e:
+                                print(f"  Lỗi khi chuyển đổi dữ liệu từ list: {e}")
+
+                    elif isinstance(output, dict):
+                        # Đầu ra là dictionary - có thể có trong một số mô hình
+                        if "scores" in output and "boxes" in output:
+                            scores = output["scores"]
+                            boxes = output["boxes"]
+
+                    # Nếu không xác định được định dạng đầu ra, bỏ qua slice này
+                    if scores is None or boxes is None:
                         continue
 
-                    # Lấy các box có confidence cao
-                    keep_indices = torch.where(scores[0] > 0.5)[0]
-                    if len(keep_indices) > 0:
-                        boxes_slice = boxes[0, keep_indices].cpu().numpy()
-                        scores_slice = scores[0, keep_indices].cpu().numpy()
+                    # Xử lý scores và boxes, xét các trường hợp đặc biệt
+                    try:
+                        # Trường hợp scores là số
+                        if isinstance(scores, (int, float, np.integer, np.floating)):
+                            # Không có nhiều dự đoán, chỉ có một giá trị
+                            if isinstance(
+                                boxes, (list, tuple, np.ndarray, torch.Tensor)
+                            ) and hasattr(boxes, "__len__"):
+                                # Nếu boxes là một mảng/tensor có ít nhất 4 phần tử (x1,y1,x2,y2)
+                                if len(boxes) >= 4:
+                                    boxes_slice = [boxes]
+                                    scores_slice = [scores]
+                                else:
+                                    continue
+                            else:
+                                continue
 
-                        # Lưu lại cùng với thông tin slice hiện tại
+                        # Trường hợp scores là tensor/array
+                        elif isinstance(scores, (np.ndarray, torch.Tensor)):
+                            # Áp dụng ngưỡng confidence
+                            if isinstance(scores, np.ndarray):
+                                keep_indices = np.where(scores > 0.3)[0]
+                                if len(keep_indices) > 0:
+                                    if len(scores.shape) > 1:
+                                        scores_slice = scores[0, keep_indices]
+                                    else:
+                                        scores_slice = scores[keep_indices]
+                                else:
+                                    continue
+                            else:  # torch.Tensor
+                                if len(scores.shape) > 1:
+                                    keep_indices = torch.where(scores[0] > 0.3)[0]
+                                    if len(keep_indices) > 0:
+                                        scores_slice = (
+                                            scores[0, keep_indices].cpu().numpy()
+                                        )
+                                    else:
+                                        continue
+                                else:
+                                    keep_indices = torch.where(scores > 0.3)[0]
+                                    if len(keep_indices) > 0:
+                                        scores_slice = (
+                                            scores[keep_indices].cpu().numpy()
+                                        )
+                                    else:
+                                        continue
+
+                            # Lấy boxes tương ứng
+                            if isinstance(boxes, np.ndarray):
+                                if len(boxes.shape) > 1:
+                                    if len(boxes.shape) > 2:
+                                        boxes_slice = boxes[0, keep_indices].copy()
+                                    else:
+                                        boxes_slice = boxes[keep_indices].copy()
+                                else:
+                                    # Nếu boxes chỉ có 1 chiều, giả định nó là một box
+                                    boxes_slice = [boxes]
+                            elif isinstance(boxes, torch.Tensor):
+                                if len(boxes.shape) > 1:
+                                    if len(boxes.shape) > 2:
+                                        boxes_slice = (
+                                            boxes[0, keep_indices].cpu().numpy()
+                                        )
+                                    else:
+                                        boxes_slice = boxes[keep_indices].cpu().numpy()
+                                else:
+                                    boxes_slice = [boxes.cpu().numpy()]
+                            else:
+                                continue
+
+                        else:
+                            # Kiểu dữ liệu không hỗ trợ
+                            continue
+
+                        # Thêm boxes và scores vào danh sách
                         for box, score in zip(boxes_slice, scores_slice):
-                            boxes_all.append([box[0], box[1], i, box[2], box[3], i])
-                            scores_all.append(score)
+                            # Đảm bảo box có 4 tọa độ
+                            if (
+                                isinstance(box, (list, tuple, np.ndarray))
+                                and len(box) >= 4
+                            ):
+                                # Chuyển đổi sang float nếu cần
+                                x1 = float(box[0])
+                                y1 = float(box[1])
+                                x2 = float(box[2])
+                                y2 = float(box[3])
+
+                                boxes_all.append([x1, y1, i, x2, y2, i])
+                                scores_all.append(float(score))
+
+                    except Exception as e:
+                        print(f"Error processing detection results: {e}")
+                        import traceback
+
+                        traceback.print_exc()
+                        continue
+
                 except Exception as e:
-                    print(f"Lỗi khi xử lý slice {i}: {e}")
+                    print(f"Error during model inference for slice {i}: {e}")
+                    import traceback
+
+                    traceback.print_exc()
                     continue
 
+        # If no heart region was detected, use simple detection
         if not boxes_all:
             print(
                 "Không phát hiện được vùng tim, sử dụng phương pháp simple detection."
             )
             return self._simple_heart_detection(ct_volume)
 
-        # Chuyển sang numpy array
-        boxes_all = np.array(boxes_all)
-        scores_all = np.array(scores_all)
+        # Process detection results
+        try:
+            boxes_all = np.array(boxes_all)
+            scores_all = np.array(scores_all)
 
-        # Tìm box có điểm cao nhất
-        best_idx = np.argmax(scores_all)
-        x_min, y_min, z_min, x_max, y_max, z_max = boxes_all[best_idx]
+            # Get the box with the highest score
+            best_idx = np.argmax(scores_all)
+            x_min, y_min, z_min, x_max, y_max, z_max = boxes_all[best_idx]
 
-        # Mở rộng box để đảm bảo bắt toàn bộ tim
-        width = x_max - x_min
-        height = y_max - y_min
-        depth = max(2, z_max - z_min)  # Đảm bảo có độ sâu
+            # Expand the box to ensure capturing the entire heart
+            width = x_max - x_min
+            height = y_max - y_min
+            depth = max(2, z_max - z_min)  # Ensure minimal depth
 
-        x_min = max(0, x_min - width * 0.1)
-        y_min = max(0, y_min - height * 0.1)
-        z_min = max(0, z_min - depth)
+            x_min = max(0, x_min - width * 0.1)
+            y_min = max(0, y_min - height * 0.1)
+            z_min = max(0, z_min - depth)
 
-        x_max = min(ct_volume.shape[2], x_max + width * 0.1)
-        y_max = min(ct_volume.shape[1], y_max + height * 0.1)
-        z_max = min(ct_volume.shape[0], z_max + depth)
+            x_max = min(ct_volume.shape[2], x_max + width * 0.1)
+            y_max = min(ct_volume.shape[1], y_max + height * 0.1)
+            z_max = min(ct_volume.shape[0], z_max + depth)
 
-        print(
-            f"Đã phát hiện vùng tim: [{x_min:.1f}, {y_min:.1f}, {z_min:.1f}] - [{x_max:.1f}, {y_max:.1f}, {z_max:.1f}]"
-        )
-        return (int(x_min), int(y_min), int(z_min), int(x_max), int(y_max), int(z_max))
+            print(
+                f"Đã phát hiện vùng tim: [{x_min:.1f}, {y_min:.1f}, {z_min:.1f}] - [{x_max:.1f}, {y_max:.1f}, {z_max:.1f}]"
+            )
+            return (
+                int(x_min),
+                int(y_min),
+                int(z_min),
+                int(x_max),
+                int(y_max),
+                int(z_max),
+            )
+        except Exception as e:
+            print(f"Error processing detection results: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return self._simple_heart_detection(ct_volume)
+
+def debug_detection(self, ct_volume, slice_indices=None):
+    """
+    Hiển thị thông tin debug về quá trình phát hiện tim
+    """
+    if self.model is None:
+        print("Không có mô hình detector để debug.")
+        return
+
+    if slice_indices is None:
+        mid_slice = ct_volume.shape[0] // 2
+        slice_indices = [mid_slice - 10, mid_slice, mid_slice + 10]
+
+    # Hiển thị thông tin mô hình
+    print(f"Model type: {type(self.model)}")
+    
+    def print_structure(obj, prefix="", max_depth=3, current_depth=0):
+        """
+        In ra cấu trúc chi tiết của một đối tượng phức tạp
+        """
+        if current_depth > max_depth:
+            print(f"{prefix}... (max depth reached)")
+            return
+
+        if isinstance(obj, (list, tuple)):
+            print(f"{prefix}List/Tuple of length {len(obj)}")
+            if len(obj) > 0:
+                # Chỉ in một vài phần tử đầu tiên để tránh quá nhiều output
+                for i, item in enumerate(obj[:3]):
+                    print(f"{prefix}[{i}]:")
+                    print_structure(item, prefix + "  ", max_depth, current_depth + 1)
+                if len(obj) > 3:
+                    print(f"{prefix}... ({len(obj) - 3} more items)")
+
+        elif isinstance(obj, dict):
+            print(f"{prefix}Dict with {len(obj)} keys: {list(obj.keys())}")
+            for key, value in list(obj.items())[:3]:
+                print(f"{prefix}['{key}']:")
+                print_structure(value, prefix + "  ", max_depth, current_depth + 1)
+            if len(obj) > 3:
+                print(f"{prefix}... ({len(obj) - 3} more keys)")
+
+        elif isinstance(obj, (np.ndarray, torch.Tensor)):
+            if hasattr(obj, "shape"):
+                print(f"{prefix}{type(obj).__name__} with shape {obj.shape}")
+                if obj.size <= 6:  # Chỉ in giá trị nếu kích thước nhỏ
+                    print(f"{prefix}Values: {obj}")
+            else:
+                print(f"{prefix}{type(obj).__name__}")
+
+        else:
+            print(f"{prefix}{type(obj).__name__}: {obj}")
+
+    # Thử detection và hiển thị kết quả
+    for i in slice_indices:
+        if 0 <= i < ct_volume.shape[0]:
+            print(f"\nDebug detection cho slice {i}")
+
+            # Chuẩn bị input
+            img_slice = ct_volume[i]
+            img_normalized = self._normalize_for_detection(img_slice)
+            img_input = np.stack(
+                [img_normalized, img_normalized, img_normalized], axis=0
+            )
+            img_tensor = torch.from_numpy(img_input).float().unsqueeze(0).to(self.device)
+
+            # Lưu ảnh để kiểm tra trực quan
+            plt.imsave(f"debug_detector_slice_{i}.png", img_normalized, cmap="gray")
+
+            # Thực hiện inference
+            try:
+                with torch.no_grad():
+                    output = self.model(img_tensor)
+                    print(f"Output type: {type(output)}")
+                    
+                    # In cấu trúc chi tiết của output
+                    print("Detailed output structure:")
+                    print_structure(output)
+                    
+            except Exception as e:
+                print(f"Lỗi khi chạy mô hình: {e}")
+                import traceback
+                traceback.print_exc()
 
 
 def preprocess_heart_ct(ct_volume, heart_bbox):
@@ -468,7 +727,7 @@ class Tri2DNetModel:
         # Thực hiện dự đoán
         with torch.no_grad():
             try:
-                # Thử sử dụng phương thức aug_transform của mô hình
+                # Phương thức aug_transform của mô hình áp dụng data augmentation
                 pred_prob = self.model.aug_transform(ct_tensor)
                 print(
                     f"pred_prob shape: {pred_prob.shape if hasattr(pred_prob, 'shape') else 'scalar'}"
@@ -491,6 +750,20 @@ class Tri2DNetModel:
                     else:
                         # Trường hợp không xác định, lấy giá trị trung bình
                         risk_score = float(pred_prob.mean())
+                elif isinstance(
+                    pred_prob, np.ndarray
+                ):  # Xử lý đầu ra kiểu numpy.ndarray
+                    if pred_prob.size == 1:  # Chỉ có một giá trị
+                        risk_score = float(pred_prob.item())
+                    elif pred_prob.shape[0] == 1:  # Một phần tử trong mảng
+                        risk_score = float(pred_prob[0])
+                    elif pred_prob.shape[0] >= 2:  # Nhiều phần tử
+                        # Đây là trường hợp nhị phân, ta lấy xác suất của lớp dương (positive class)
+                        risk_score = float(pred_prob[1])
+                    else:
+                        # Trường hợp không xác định, lấy giá trị trung bình
+                        risk_score = float(np.mean(pred_prob))
+                    print(f"Sử dụng giá trị numpy.ndarray: {risk_score}")
                 else:
                     print(
                         f"WARNING: Không nhận dạng được kiểu dữ liệu đầu ra: {type(pred_prob)}"
@@ -615,6 +888,9 @@ def generate_report(metadata, risk_score):
         Điểm nguy cơ CVD
     """
     try:
+        # Lấy thông tin chi tiết về mức độ nguy cơ
+        risk_details = get_risk_details(risk_score)
+
         # Tạo nội dung báo cáo
         report = f"""
         ========================================
@@ -631,8 +907,16 @@ def generate_report(metadata, risk_score):
         - Độ dày lớp: {metadata.get('SliceThickness', 'N/A')} mm
         
         Kết quả dự đoán:
-        - Điểm nguy cơ CVD: {risk_score:.5f}
-        - Mức độ nguy cơ: {get_risk_level(risk_score)}
+        - Điểm nguy cơ CVD: {risk_score:.5f} ({risk_details['risk_percentage']})
+        - Mức độ nguy cơ: {risk_details['risk_level']}
+        
+        Khuyến nghị:"""
+
+        # Thêm các khuyến nghị
+        for recommendation in risk_details["recommendations"]:
+            report += f"\n        - {recommendation}"
+
+        report += f"""
         
         Thời gian dự đoán: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         
@@ -647,6 +931,9 @@ def generate_report(metadata, risk_score):
         print(report)
     except Exception as e:
         print(f"Không thể tạo báo cáo: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def get_risk_level(risk_score):
@@ -657,6 +944,28 @@ def get_risk_level(risk_score):
         return "Trung bình"
     else:
         return "Cao"
+
+
+def get_risk_details(risk_score):
+    """Phân tích chi tiết mức độ nguy cơ CVD"""
+    details = {
+        "risk_level": get_risk_level(risk_score),
+        "risk_percentage": f"{risk_score * 100:.2f}%",
+        "recommendations": [],
+    }
+
+    # Thêm các khuyến nghị dựa trên mức độ rủi ro
+    if risk_score > 0.7:
+        details["recommendations"].append("Khám chuyên khoa tim mạch gấp")
+        details["recommendations"].append("Chụp mạch vành để đánh giá chi tiết")
+    elif risk_score > 0.5:
+        details["recommendations"].append("Khám chuyên khoa tim mạch")
+        details["recommendations"].append("Theo dõi các yếu tố nguy cơ tim mạch")
+    else:
+        details["recommendations"].append("Tái khám định kỳ")
+        details["recommendations"].append("Duy trì lối sống lành mạnh")
+
+    return details
 
 
 def debug_model_output(self, processed_ct):
@@ -730,7 +1039,8 @@ def debug_model_output(self, processed_ct):
     print("=== END DEBUG ===\n")
 
 
-def main(dicom_dir, visualize=True, debug=False):
+
+def main(dicom_dir, visualize=True, detection_method="auto", debug=False):
     """
     Hàm chính để thực hiện toàn bộ quy trình
 
@@ -740,6 +1050,8 @@ def main(dicom_dir, visualize=True, debug=False):
         Đường dẫn đến thư mục chứa các file DICOM
     visualize: bool
         Nếu True, hiển thị kết quả trực quan
+    detection_method: str
+        Phương pháp phát hiện tim: auto, model, simple
     debug: bool
         Nếu True, hiển thị thông tin debug
     """
@@ -748,39 +1060,60 @@ def main(dicom_dir, visualize=True, debug=False):
         ct_volume, metadata = load_dicom_series(dicom_dir)
         logging.info(f"Đã đọc CT volume với kích thước {ct_volume.shape}")
 
+        # Debug logging
         if debug:
-            # Save a few sample slices
             mid_slice = ct_volume.shape[0] // 2
             for i, idx in enumerate([mid_slice - 10, mid_slice, mid_slice + 10]):
                 if 0 <= idx < ct_volume.shape[0]:
                     plt.imsave(f"debug_slice_{idx}.png", ct_volume[idx], cmap="gray")
-
             print("CT volume shape:", ct_volume.shape)
             print("CT value range:", np.min(ct_volume), np.max(ct_volume))
 
         # 2. Phát hiện vùng tim
         heart_detector = HeartDetector()
-        heart_bbox = heart_detector._simple_heart_detection(
-            ct_volume
-        )  # Use simple detector for now
+
+        # Lựa chọn phương pháp phát hiện tim
+        if detection_method == "simple":
+            print(
+                "Sử dụng phương pháp phát hiện tim đơn giản theo lựa chọn của người dùng."
+            )
+            heart_bbox = heart_detector._simple_heart_detection(ct_volume)
+        elif detection_method == "model":
+            if heart_detector.model is None:
+                print(
+                    "Yêu cầu dùng mô hình nhưng mô hình không có sẵn. Sử dụng phương pháp đơn giản."
+                )
+                heart_bbox = heart_detector._simple_heart_detection(ct_volume)
+            else:
+                print("Sử dụng mô hình phát hiện tim theo lựa chọn của người dùng.")
+                heart_bbox = heart_detector.detect_heart_region(ct_volume)
+        else:  # auto
+            print("Tự động lựa chọn phương pháp phát hiện tim tốt nhất.")
+            heart_bbox = heart_detector.detect_heart_region(ct_volume)
+
+        # Debug detector
+        if debug:
+            heart_detector.debug_detection(ct_volume)
+
         logging.info(f"Vùng tim: {heart_bbox}")
 
         # 3. Tiền xử lý ảnh CT - với 3 kênh
-        processed_ct = preprocess_heart_ct(
-            ct_volume, heart_bbox
-        )  # Cập nhật hàm này để trả về 3 kênh
+        processed_ct = preprocess_heart_ct(ct_volume, heart_bbox)
         logging.info(f"Kích thước sau tiền xử lý: {processed_ct.shape}")
 
         # 4. Tải mô hình và dự đoán
         model = Tri2DNetModel()
 
-        if debug:
-            # Run debug function
-            model.debug_model_output(processed_ct)
-
         # Try the modified predict_risk method
         risk_score = model.predict_risk(processed_ct)
         logging.info(f"Điểm nguy cơ CVD: {risk_score:.5f}")
+
+        # Lấy thông tin chi tiết về mức độ nguy cơ
+        risk_details = get_risk_details(risk_score)
+        logging.info(
+            f"Điểm nguy cơ CVD: {risk_score:.5f} - Mức độ: {risk_details['risk_level']}"
+        )
+        logging.info(f"Khuyến nghị: {', '.join(risk_details['recommendations'])}")
 
         # 5. Tạo báo cáo
         generate_report(metadata, risk_score)
@@ -789,7 +1122,19 @@ def main(dicom_dir, visualize=True, debug=False):
         if visualize:
             visualize_results(ct_volume, heart_bbox, risk_score)
             logging.info(f"Đã lưu kết quả trực quan vào 'cvd_risk_result.png'")
+        # 7. Lưu thông tin chi tiết dưới dạng JSON
+        if debug:
+            import json
 
+            details = {
+                "patient_id": metadata.get("PatientID", "N/A"),
+                "risk_score": float(risk_score),
+                "risk_details": risk_details,
+                "prediction_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            with open("cvd_prediction_details.json", "w") as f:
+                json.dump(details, f, indent=4)
+            print("Đã lưu thông tin chi tiết vào 'cvd_prediction_details.json'")
         return risk_score
 
     except Exception as e:
@@ -812,9 +1157,24 @@ if __name__ == "__main__":
         action="store_false",
         help="Không hiển thị kết quả trực quan",
     )
+    parser.add_argument(
+        "--detection-method",
+        choices=["auto", "model", "simple"],
+        default="auto",
+        help="Phương pháp phát hiện tim: auto (tự động), model (chỉ dùng mô hình), simple (phương pháp đơn giản)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Bật chế độ debug",
+    )
     parser.set_defaults(visualize=True)
 
     args = parser.parse_args()
 
-    main(args.dicom_dir, args.visualize)
+    # Chọn phương pháp phát hiện tim
+    detection_method = args.detection_method
+
+    main(args.dicom_dir, args.visualize, detection_method, args.debug)
+
 # python dicom_detect.py ""./dataset/Tuong_20230828"
