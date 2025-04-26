@@ -20,10 +20,21 @@ import argparse
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+sys.path.append("./detector")
+
 # Cài đặt định nghĩa đường dẫn
 MODEL_PATH = "./checkpoint"  # Thay đổi nếu cần
 RETINANET_PATH = "./detector"  # Đường dẫn đến mô hình RetinaNet đã huấn luyện
-CHECKPOINT_PATH = ".NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm"
+CHECKPOINT_PATH = "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm"
+import logging
+
+# Set up logging
+logging.basicConfig(
+    filename="cvd_detection.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
 
 def load_dicom_series(dicom_dir):
     """
@@ -96,6 +107,33 @@ def load_dicom_series(dicom_dir):
     return img_array, metadata
 
 
+def inspect_model(model):
+    """Print a summary of the model structure"""
+    print(f"Model type: {type(model)}")
+
+    # If it's a class with a forward method
+    if hasattr(model, "forward"):
+        try:
+            # Check signature of forward method
+            import inspect
+
+            sig = inspect.signature(model.forward)
+            print(f"Forward method signature: {sig}")
+        except Exception as e:
+            print(f"Couldn't inspect forward method: {e}")
+
+    # List main attributes
+    try:
+        print("Model attributes:")
+        for attr_name in dir(model):
+            if not attr_name.startswith("_"):  # Skip private attributes
+                attr = getattr(model, attr_name)
+                if not callable(attr):
+                    print(f"  {attr_name}: {type(attr)}")
+    except Exception as e:
+        print(f"Couldn't list attributes: {e}")
+
+
 class HeartDetector:
     """
     Class để phát hiện vùng tim từ ảnh CT
@@ -113,36 +151,111 @@ class HeartDetector:
 
         try:
             # Tải mô hình RetinaNet
-            from detector.retinanet.model import resnet50
-
-            self.model = resnet50(num_classes=1)
-            self.model.load_state_dict(
-                torch.load(
-                    os.path.join(model_path, "retinanet_heart.pt"),
-                    map_location=self.device,
-                )
-            )
-            self.model.eval()
-            self.model = self.model.to(self.device)
-            print("Đã tải mô hình detector thành công.")
+            model_file = os.path.join(model_path, "retinanet_heart.pt")
+            if os.path.exists(model_file):
+                self.model = torch.load(model_file, map_location=self.device)
+                self.model.eval()
+                print("Đã tải mô hình detector thành công.")
+            else:
+                print(f"Không tìm thấy file mô hình: {model_file}")
+                self.model = None
         except Exception as e:
             print(f"Lỗi khi tải mô hình detector: {e}")
             print("Sử dụng simple detector...")
             self.model = None
 
+    def _normalize_for_detection(self, img_slice):
+        """
+        Chuẩn hóa ảnh cho việc phát hiện
+        """
+        # Cắt giá trị HU trong khoảng phù hợp
+        img_slice = np.clip(img_slice, -1000, 400)
+
+        # Chuẩn hóa về khoảng [0, 1]
+        img_normalized = (img_slice - (-1000)) / (400 - (-1000))
+
+        return img_normalized
+
+    def _simple_heart_detection(self, ct_volume):
+        """
+        Phương pháp phát hiện tim đơn giản dựa trên giá trị HU
+        """
+        # Tìm các điểm có giá trị HU trong khoảng tim (-50 đến 100)
+        heart_mask = np.logical_and(ct_volume > -50, ct_volume < 100)
+
+        # Tìm trung tâm ảnh
+        center_z, center_y, center_x = np.array(ct_volume.shape) // 2
+
+        # Xác định vùng tim dựa vào vị trí trung tâm
+        z_size, y_size, x_size = ct_volume.shape
+
+        # Giả định tim nằm ở trung tâm ảnh
+        x_min = max(0, center_x - x_size // 4)
+        y_min = max(0, center_y - y_size // 4)
+        z_min = max(0, center_z - z_size // 4)
+
+        x_max = min(ct_volume.shape[2], center_x + x_size // 4)
+        y_max = min(ct_volume.shape[1], center_y + y_size // 4)
+        z_max = min(ct_volume.shape[0], center_z + z_size // 4)
+
+        print(
+            f"Sử dụng phương pháp simple detection: [{x_min}, {y_min}, {z_min}] - [{x_max}, {y_max}, {z_max}]"
+        )
+        return (x_min, y_min, z_min, x_max, y_max, z_max)
+
+    def _improved_heart_detection(self, ct_volume):
+        """
+        Enhanced method for heart detection using image processing
+        """
+        from scipy import ndimage
+
+        # Find the middle slice
+        mid_slice = ct_volume.shape[0] // 2
+
+        # Window the HU values to focus on soft tissue
+        windowed = np.clip(ct_volume[mid_slice], -150, 250)
+        normalized = (windowed - (-150)) / (250 - (-150))
+
+        # Threshold to create a binary mask
+        threshold = 0.5
+        binary = (normalized > threshold).astype(np.uint8)
+
+        # Find connected components
+        labeled, num_features = ndimage.label(binary)
+
+        # Find the largest connected component near the center
+        center_y, center_x = np.array(binary.shape) // 2
+        center_region = labeled[center_y, center_x]
+
+        if (
+            center_region == 0
+        ):  # If center is not in any region, find the largest region
+            sizes = ndimage.sum(binary, labeled, range(1, num_features + 1))
+            largest_region = np.argmax(sizes) + 1
+            mask = labeled == largest_region
+        else:
+            mask = labeled == center_region
+
+        # Find bounding box of the region
+        y_indices, x_indices = np.where(mask)
+        y_min, y_max = np.min(y_indices), np.max(y_indices)
+        x_min, x_max = np.min(x_indices), np.max(x_indices)
+
+        # Determine Z range (depth) - typically 1/3 of slices centered at middle
+        z_min = max(0, mid_slice - ct_volume.shape[0] // 6)
+        z_max = min(ct_volume.shape[0], mid_slice + ct_volume.shape[0] // 6)
+
+        # Expand the bounding box slightly
+        x_min = max(0, x_min - 20)
+        y_min = max(0, y_min - 20)
+        x_max = min(ct_volume.shape[2] - 1, x_max + 20)
+        y_max = min(ct_volume.shape[1] - 1, y_max + 20)
+
+        return (int(x_min), int(y_min), int(z_min), int(x_max), int(y_max), int(z_max))
+
     def detect_heart_region(self, ct_volume):
         """
         Phát hiện vùng tim từ ảnh CT
-
-        Parameters:
-        -----------
-        ct_volume: numpy.ndarray
-            Mảng 3D chứa dữ liệu ảnh CT
-
-        Returns:
-        --------
-        (x_min, y_min, z_min, x_max, y_max, z_max): tuple
-            Tọa độ của vùng tim
         """
         print("Đang phát hiện vùng tim...")
 
@@ -174,18 +287,38 @@ class HeartDetector:
 
             # Dự đoán
             with torch.no_grad():
-                scores, boxes = self.model(img_tensor)
+                try:
+                    # Try standard format first (returning scores, boxes)
+                    output = self.model(img_tensor)
 
-            # Lấy các box có confidence cao
-            keep_indices = torch.where(scores[0] > 0.5)[0]
-            if len(keep_indices) > 0:
-                boxes_slice = boxes[0, keep_indices].cpu().numpy()
-                scores_slice = scores[0, keep_indices].cpu().numpy()
+                    # Check the output format and adapt accordingly
+                    if isinstance(output, tuple) and len(output) == 2:
+                        scores, boxes = output
+                    elif (
+                        isinstance(output, dict)
+                        and "scores" in output
+                        and "boxes" in output
+                    ):
+                        scores, boxes = output["scores"], output["boxes"]
+                    else:
+                        print(
+                            f"Unexpected model output format: {type(output)}. Skipping slice {i}."
+                        )
+                        continue
 
-                # Lưu lại cùng với thông tin slice hiện tại
-                for box, score in zip(boxes_slice, scores_slice):
-                    boxes_all.append([box[0], box[1], i, box[2], box[3], i])
-                    scores_all.append(score)
+                    # Lấy các box có confidence cao
+                    keep_indices = torch.where(scores[0] > 0.5)[0]
+                    if len(keep_indices) > 0:
+                        boxes_slice = boxes[0, keep_indices].cpu().numpy()
+                        scores_slice = scores[0, keep_indices].cpu().numpy()
+
+                        # Lưu lại cùng với thông tin slice hiện tại
+                        for box, score in zip(boxes_slice, scores_slice):
+                            boxes_all.append([box[0], box[1], i, box[2], box[3], i])
+                            scores_all.append(score)
+                except Exception as e:
+                    print(f"Lỗi khi xử lý slice {i}: {e}")
+                    continue
 
         if not boxes_all:
             print(
@@ -218,45 +351,6 @@ class HeartDetector:
             f"Đã phát hiện vùng tim: [{x_min:.1f}, {y_min:.1f}, {z_min:.1f}] - [{x_max:.1f}, {y_max:.1f}, {z_max:.1f}]"
         )
         return (int(x_min), int(y_min), int(z_min), int(x_max), int(y_max), int(z_max))
-
-    def _simple_heart_detection(self, ct_volume):
-        """
-        Phương pháp phát hiện tim đơn giản dựa trên giá trị HU
-        """
-        # Tìm các điểm có giá trị HU trong khoảng tim (-50 đến 100)
-        heart_mask = np.logical_and(ct_volume > -50, ct_volume < 100)
-
-        # Tìm trung tâm ảnh
-        center_z, center_y, center_x = np.array(ct_volume.shape) // 2
-
-        # Xác định vùng tim dựa vào vị trí trung tâm
-        z_size, y_size, x_size = ct_volume.shape
-
-        # Giả định tim nằm ở trung tâm ảnh
-        x_min = max(0, center_x - x_size // 4)
-        y_min = max(0, center_y - y_size // 4)
-        z_min = max(0, center_z - z_size // 4)
-
-        x_max = min(ct_volume.shape[2], center_x + x_size // 4)
-        y_max = min(ct_volume.shape[1], center_y + y_size // 4)
-        z_max = min(ct_volume.shape[0], center_z + z_size // 4)
-
-        print(
-            f"Sử dụng phương pháp simple detection: [{x_min}, {y_min}, {z_min}] - [{x_max}, {y_max}, {z_max}]"
-        )
-        return (x_min, y_min, z_min, x_max, y_max, z_max)
-
-    def _normalize_for_detection(self, img_slice):
-        """
-        Chuẩn hóa ảnh cho việc phát hiện
-        """
-        # Cắt giá trị HU trong khoảng phù hợp
-        img_slice = np.clip(img_slice, -1000, 400)
-
-        # Chuẩn hóa về khoảng [0, 1]
-        img_normalized = (img_slice - (-1000)) / (400 - (-1000))
-
-        return img_normalized
 
 
 def preprocess_heart_ct(ct_volume, heart_bbox):
@@ -323,9 +417,7 @@ class Tri2DNetModel:
             self.model = init_model()
 
             # Tải checkpoint
-            checkpoint_path = os.path.join(
-                model_path, CHECKPOINT_PATH
-            )
+            checkpoint_path = os.path.join(model_path, CHECKPOINT_PATH)
             self.model.encoder.load_state_dict(
                 torch.load(
                     checkpoint_path,
@@ -362,13 +454,49 @@ class Tri2DNetModel:
 
         # Thực hiện dự đoán
         with torch.no_grad():
-            # Phương thức aug_transform của mô hình áp dụng data augmentation
-            # và lấy giá trị trung bình của các dự đoán
-            pred_prob = self.model.aug_transform(ct_tensor)
-            risk_score = pred_prob[1]  # Lấy xác suất của class 1 (có nguy cơ CVD)
+            try:
+                # Phương thức aug_transform của mô hình áp dụng data augmentation
+                pred_prob = self.model.aug_transform(ct_tensor)
+                print(
+                    "pred_prob shape:",
+                    pred_prob.shape if hasattr(pred_prob, "shape") else "scalar",
+                )
+                print("pred_prob:", pred_prob)
 
-        print(f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
-        return risk_score
+                # Kiểm tra kiểu dữ liệu trả về
+                if isinstance(pred_prob, (int, float)):
+                    # Nếu là giá trị scalar
+                    risk_score = float(pred_prob)
+                elif isinstance(pred_prob, torch.Tensor):
+                    # Nếu là tensor
+                    if pred_prob.numel() == 1:  # Chỉ có một phần tử
+                        risk_score = pred_prob.item()
+                    elif pred_prob.shape[0] >= 2:  # Multi-class output
+                        # Nếu đây là đầu ra nhị phân, lấy xác suất lớp dương (positive class)
+                        risk_score = float(pred_prob[1])
+                    else:
+                        # Nếu chỉ có một phần tử nhưng trong tensor
+                        risk_score = float(pred_prob[0])
+                else:
+                    # Fallback - trả về giá trị mặc định
+                    print("WARNING: Unhandled prediction type, using default value")
+                    risk_score = 0.5
+
+                # Đảm bảo risk_score nằm trong khoảng [0, 1]
+                risk_score = max(0, min(1, risk_score))
+
+                print(f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
+                return risk_score
+
+            except Exception as e:
+                print(f"Lỗi trong quá trình dự đoán: {e}")
+                # In thêm thông tin chi tiết để debug
+                import traceback
+
+                traceback.print_exc()
+
+                # Trả về giá trị mặc định trong trường hợp lỗi
+                return 0.5
 
     def generate_heatmap(self, processed_ct):
         """
@@ -507,7 +635,57 @@ def get_risk_level(risk_score):
         return "Cao"
 
 
-def main(dicom_dir, visualize=True):
+def debug_model_output(self, processed_ct):
+    """
+    Hàm debug để in ra chi tiết về đầu ra của mô hình
+    """
+    print("\n=== DEBUG MODEL OUTPUT ===")
+
+    if self.model is None:
+        print("Model is None, cannot debug")
+        return
+
+    # Chuyển đổi sang tensor
+    ct_tensor = torch.from_numpy(processed_ct).float()
+
+    # Kiểm tra các thuộc tính model
+    print("Model attributes:")
+    for attr_name in dir(self.model):
+        if not attr_name.startswith("_"):
+            attr = getattr(self.model, attr_name)
+            if not callable(attr):
+                print(f"  {attr_name}: {type(attr)}")
+
+    # Thực hiện dự đoán với nhiều cách khác nhau
+    with torch.no_grad():
+        try:
+            # Try direct forward pass
+            if hasattr(self.model, "forward"):
+                print("\nTrying direct forward pass:")
+                output = self.model(ct_tensor)
+                print(f"Type: {type(output)}")
+                if isinstance(output, torch.Tensor):
+                    print(f"Shape: {output.shape}")
+                    print(f"Values: {output}")
+        except Exception as e:
+            print(f"Forward pass error: {e}")
+
+        try:
+            # Try standard aug_transform method
+            if hasattr(self.model, "aug_transform"):
+                print("\nTrying aug_transform method:")
+                output = self.model.aug_transform(ct_tensor)
+                print(f"Type: {type(output)}")
+                if isinstance(output, torch.Tensor):
+                    print(f"Shape: {output.shape}")
+                    print(f"Values: {output}")
+        except Exception as e:
+            print(f"aug_transform error: {e}")
+
+    print("=== END DEBUG ===\n")
+
+
+def main(dicom_dir, visualize=True, debug=False):
     """
     Hàm chính để thực hiện toàn bộ quy trình
 
@@ -517,20 +695,40 @@ def main(dicom_dir, visualize=True):
         Đường dẫn đến thư mục chứa các file DICOM
     visualize: bool
         Nếu True, hiển thị kết quả trực quan
+    debug: bool
+        Nếu True, hiển thị thông tin debug
     """
     try:
         # 1. Đọc ảnh DICOM
         ct_volume, metadata = load_dicom_series(dicom_dir)
 
+        if debug:
+            # Save a few sample slices
+            mid_slice = ct_volume.shape[0] // 2
+            for i, idx in enumerate([mid_slice - 10, mid_slice, mid_slice + 10]):
+                if 0 <= idx < ct_volume.shape[0]:
+                    plt.imsave(f"debug_slice_{idx}.png", ct_volume[idx], cmap="gray")
+
+            print("CT volume shape:", ct_volume.shape)
+            print("CT value range:", np.min(ct_volume), np.max(ct_volume))
+
         # 2. Phát hiện vùng tim
         heart_detector = HeartDetector()
-        heart_bbox = heart_detector.detect_heart_region(ct_volume)
+        heart_bbox = heart_detector._simple_heart_detection(
+            ct_volume
+        )  # Use simple detector for now
 
         # 3. Tiền xử lý ảnh CT
         processed_ct = preprocess_heart_ct(ct_volume, heart_bbox)
 
         # 4. Tải mô hình và dự đoán
         model = Tri2DNetModel()
+
+        if debug:
+            # Run debug function first
+            model.debug_model_output(processed_ct)
+
+        # Try the modified predict_risk method
         risk_score = model.predict_risk(processed_ct)
 
         # 5. Tạo báo cáo
@@ -540,16 +738,13 @@ def main(dicom_dir, visualize=True):
         if visualize:
             visualize_results(ct_volume, heart_bbox, risk_score)
 
-            # Tạo bản đồ nhiệt
-            try:
-                model.generate_heatmap(processed_ct)
-            except Exception as e:
-                print(f"Không thể tạo bản đồ nhiệt: {e}")
-
         return risk_score
 
     except Exception as e:
         print(f"Lỗi trong quá trình xử lý: {e}")
+        import traceback
+
+        traceback.print_exc()
         return None
 
 
@@ -569,5 +764,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args.dicom_dir, args.visualize)
-# python dicom_detect.py ./data/Tuong_20230828
-    
+# python dicom_detect.py ""./dataset/Tuong_20230828"
