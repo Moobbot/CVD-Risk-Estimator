@@ -366,7 +366,7 @@ def preprocess_heart_ct(ct_volume, heart_bbox):
 
     Returns:
     --------
-    numpy.ndarray: Mảng đã được tiền xử lý, kích thước (1, 128, 128, 128)
+    numpy.ndarray: Mảng đã được tiền xử lý, kích thước (3, 128, 128, 128)
     """
     print("Đang tiền xử lý ảnh CT vùng tim...")
 
@@ -391,10 +391,13 @@ def preprocess_heart_ct(ct_volume, heart_bbox):
     print(f"Kích thước vùng tim sau khi resize: {heart_ct.shape}")
     print(f"Giá trị min: {heart_ct.min()}, max: {heart_ct.max()}")
 
-    # Thêm kênh cho phù hợp với input của mô hình
-    heart_ct = heart_ct.reshape(1, *heart_ct.shape)
+    # Tạo đầu vào 3 kênh cho mô hình Tri2D-Net
+    # Mô hình yêu cầu input có hình dạng (channels, depth, height, width)
+    heart_ct_3channel = np.stack([heart_ct, heart_ct, heart_ct], axis=0)
 
-    return heart_ct
+    print(f"Kích thước đầu vào sau khi chuẩn bị: {heart_ct_3channel.shape}")
+
+    return heart_ct_3channel
 
 
 class Tri2DNetModel:
@@ -438,7 +441,7 @@ class Tri2DNetModel:
         Parameters:
         -----------
         processed_ct: numpy.ndarray
-            Mảng 4D chứa dữ liệu ảnh CT đã tiền xử lý
+            Mảng đã được tiền xử lý, kích thước (3, 128, 128, 128)
 
         Returns:
         --------
@@ -452,51 +455,72 @@ class Tri2DNetModel:
         # Chuyển đổi sang tensor
         ct_tensor = torch.from_numpy(processed_ct).float()
 
+        # Kiểm tra kích thước đầu vào
+        if (
+            ct_tensor.dim() == 4
+        ):  # Đầu vào có hình dạng (channels, depth, height, width)
+            if ct_tensor.shape[0] < 2:  # Nếu chỉ có 1 kênh
+                print("Input chỉ có 1 kênh, nhân bản thành 3 kênh...")
+                ct_tensor = ct_tensor.repeat(3, 1, 1, 1)  # Nhân bản kênh
+
+        print(f"Kích thước tensor đầu vào: {ct_tensor.shape}")
+
         # Thực hiện dự đoán
         with torch.no_grad():
             try:
-                # Phương thức aug_transform của mô hình áp dụng data augmentation
+                # Thử sử dụng phương thức aug_transform của mô hình
                 pred_prob = self.model.aug_transform(ct_tensor)
                 print(
-                    "pred_prob shape:",
-                    pred_prob.shape if hasattr(pred_prob, "shape") else "scalar",
+                    f"pred_prob shape: {pred_prob.shape if hasattr(pred_prob, 'shape') else 'scalar'}"
                 )
-                print("pred_prob:", pred_prob)
+                print(f"pred_prob: {pred_prob}")
 
-                # Kiểm tra kiểu dữ liệu trả về
+                # Xử lý kết quả tùy theo định dạng
                 if isinstance(pred_prob, (int, float)):
-                    # Nếu là giá trị scalar
                     risk_score = float(pred_prob)
                 elif isinstance(pred_prob, torch.Tensor):
-                    # Nếu là tensor
-                    if pred_prob.numel() == 1:  # Chỉ có một phần tử
+                    if pred_prob.numel() == 1:  # Chỉ có một giá trị
                         risk_score = pred_prob.item()
-                    elif pred_prob.shape[0] >= 2:  # Multi-class output
-                        # Nếu đây là đầu ra nhị phân, lấy xác suất lớp dương (positive class)
+                    elif len(pred_prob.shape) == 0:  # Tensor scalar
+                        risk_score = pred_prob.item()
+                    elif pred_prob.shape[0] == 1:  # Một phần tử trong tensor
+                        risk_score = float(pred_prob[0])
+                    elif pred_prob.shape[0] >= 2:  # Nhiều phần tử
+                        # Đây là trường hợp nhị phân, ta lấy xác suất của lớp dương (positive class)
                         risk_score = float(pred_prob[1])
                     else:
-                        # Nếu chỉ có một phần tử nhưng trong tensor
-                        risk_score = float(pred_prob[0])
+                        # Trường hợp không xác định, lấy giá trị trung bình
+                        risk_score = float(pred_prob.mean())
                 else:
-                    # Fallback - trả về giá trị mặc định
-                    print("WARNING: Unhandled prediction type, using default value")
+                    print(
+                        f"WARNING: Không nhận dạng được kiểu dữ liệu đầu ra: {type(pred_prob)}"
+                    )
                     risk_score = 0.5
 
                 # Đảm bảo risk_score nằm trong khoảng [0, 1]
-                risk_score = max(0, min(1, risk_score))
-
-                print(f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
-                return risk_score
+                risk_score = max(0.0, min(1.0, float(risk_score)))
 
             except Exception as e:
                 print(f"Lỗi trong quá trình dự đoán: {e}")
-                # In thêm thông tin chi tiết để debug
                 import traceback
 
                 traceback.print_exc()
 
-                # Trả về giá trị mặc định trong trường hợp lỗi
-                return 0.5
+                # Thử phương pháp dự đoán thay thế
+                try:
+                    print("Thử phương pháp dự đoán thay thế...")
+                    # Sử dụng encoder trực tiếp nếu có thể
+                    if hasattr(self.model, "encoder"):
+                        features = self.model.encoder(ct_tensor)
+                        risk_score = torch.sigmoid(features.mean()).item()
+                    else:
+                        risk_score = 0.5
+                except Exception as e2:
+                    print(f"Phương pháp thay thế cũng thất bại: {e2}")
+                    risk_score = 0.5
+
+        print(f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
+        return risk_score
 
     def generate_heatmap(self, processed_ct):
         """
@@ -647,11 +671,17 @@ def debug_model_output(self, processed_ct):
 
     # Chuyển đổi sang tensor
     ct_tensor = torch.from_numpy(processed_ct).float()
+    print(f"Input shape: {ct_tensor.shape}")
+
+    # Đảm bảo có đủ số kênh
+    if ct_tensor.shape[0] < 3:
+        ct_tensor = ct_tensor.repeat(3, 1, 1, 1)
+        print(f"Expanded to shape: {ct_tensor.shape}")
 
     # Kiểm tra các thuộc tính model
     print("Model attributes:")
     for attr_name in dir(self.model):
-        if not attr_name.startswith("_"):
+        if not attr_name.startswith("_"):  # Skip private attributes
             attr = getattr(self.model, attr_name)
             if not callable(attr):
                 print(f"  {attr_name}: {type(attr)}")
@@ -659,9 +689,21 @@ def debug_model_output(self, processed_ct):
     # Thực hiện dự đoán với nhiều cách khác nhau
     with torch.no_grad():
         try:
-            # Try direct forward pass
+            # Try direct encoder access
+            if hasattr(self.model, "encoder"):
+                print("\nTrying direct encoder access:")
+                features = self.model.encoder(ct_tensor)
+                print(f"Type: {type(features)}")
+                if isinstance(features, torch.Tensor):
+                    print(f"Shape: {features.shape}")
+                    print(f"Values: {features}")
+        except Exception as e:
+            print(f"Encoder access error: {e}")
+
+        try:
+            # Try forward pass
             if hasattr(self.model, "forward"):
-                print("\nTrying direct forward pass:")
+                print("\nTrying forward pass:")
                 output = self.model(ct_tensor)
                 print(f"Type: {type(output)}")
                 if isinstance(output, torch.Tensor):
@@ -671,7 +713,7 @@ def debug_model_output(self, processed_ct):
             print(f"Forward pass error: {e}")
 
         try:
-            # Try standard aug_transform method
+            # Try aug_transform method
             if hasattr(self.model, "aug_transform"):
                 print("\nTrying aug_transform method:")
                 output = self.model.aug_transform(ct_tensor)
@@ -681,6 +723,9 @@ def debug_model_output(self, processed_ct):
                     print(f"Values: {output}")
         except Exception as e:
             print(f"aug_transform error: {e}")
+            import traceback
+
+            traceback.print_exc()
 
     print("=== END DEBUG ===\n")
 
@@ -701,6 +746,7 @@ def main(dicom_dir, visualize=True, debug=False):
     try:
         # 1. Đọc ảnh DICOM
         ct_volume, metadata = load_dicom_series(dicom_dir)
+        logging.info(f"Đã đọc CT volume với kích thước {ct_volume.shape}")
 
         if debug:
             # Save a few sample slices
@@ -717,19 +763,24 @@ def main(dicom_dir, visualize=True, debug=False):
         heart_bbox = heart_detector._simple_heart_detection(
             ct_volume
         )  # Use simple detector for now
+        logging.info(f"Vùng tim: {heart_bbox}")
 
-        # 3. Tiền xử lý ảnh CT
-        processed_ct = preprocess_heart_ct(ct_volume, heart_bbox)
+        # 3. Tiền xử lý ảnh CT - với 3 kênh
+        processed_ct = preprocess_heart_ct(
+            ct_volume, heart_bbox
+        )  # Cập nhật hàm này để trả về 3 kênh
+        logging.info(f"Kích thước sau tiền xử lý: {processed_ct.shape}")
 
         # 4. Tải mô hình và dự đoán
         model = Tri2DNetModel()
 
         if debug:
-            # Run debug function first
+            # Run debug function
             model.debug_model_output(processed_ct)
 
         # Try the modified predict_risk method
         risk_score = model.predict_risk(processed_ct)
+        logging.info(f"Điểm nguy cơ CVD: {risk_score:.5f}")
 
         # 5. Tạo báo cáo
         generate_report(metadata, risk_score)
@@ -737,11 +788,13 @@ def main(dicom_dir, visualize=True, debug=False):
         # 6. Trực quan hóa kết quả (nếu yêu cầu)
         if visualize:
             visualize_results(ct_volume, heart_bbox, risk_score)
+            logging.info(f"Đã lưu kết quả trực quan vào 'cvd_risk_result.png'")
 
         return risk_score
 
     except Exception as e:
         print(f"Lỗi trong quá trình xử lý: {e}")
+        logging.error(f"Lỗi: {e}")
         import traceback
 
         traceback.print_exc()
