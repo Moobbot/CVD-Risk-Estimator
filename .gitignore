@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+dataset/
+*.pt
+*.ptm
+*.pth
+*.pthm
+*.pth.tar
+*.pth.tar.gz
