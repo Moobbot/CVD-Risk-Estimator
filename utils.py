@@ -4,7 +4,6 @@ import logging
 import uuid
 import hashlib
 import json
-import psutil
 from datetime import datetime, timedelta
 import socket
 from typing import List, Dict, Any, Optional
@@ -17,10 +16,7 @@ from config import (
     ALLOWED_EXTENSIONS,
     ERROR_MESSAGES,
     LOG_CONFIG,
-    SESSION_CONFIG,
-    CLEANUP_CONFIG,
-    MONITORING_CONFIG,
-    SECURITY_CONFIG
+    IS_DEV
 )
 
 logger = logging.getLogger(__name__)
@@ -48,28 +44,19 @@ def get_file_hash(file_path: str) -> str:
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
 
-def cleanup_old_results(folders: List[str]) -> None:
+def cleanup_old_files(folders: List[str]) -> None:
     """Clean up old files in specified folders"""
-    if not CLEANUP_CONFIG["ENABLED"]:
-        return
-        
-    cutoff_date = datetime.now() - timedelta(days=CLEANUP_CONFIG["RETENTION_DAYS"])
+    cutoff_date = datetime.now() - timedelta(days=FILE_RETENTION_DAYS)
     
     for folder in folders:
         if not os.path.exists(folder):
             continue
             
-        # Check folder size
-        total_size = 0
-        file_count = 0
-        
         for filename in os.listdir(folder):
             file_path = os.path.join(folder, filename)
             try:
                 file_time = datetime.fromtimestamp(os.path.getctime(file_path))
-                file_size = os.path.getsize(file_path)
                 
-                # Check if file is too old
                 if file_time < cutoff_date:
                     if os.path.isfile(file_path):
                         os.remove(file_path)
@@ -77,27 +64,6 @@ def cleanup_old_results(folders: List[str]) -> None:
                     elif os.path.isdir(file_path):
                         shutil.rmtree(file_path)
                         logger.info(f"Removed old directory: {file_path}")
-                else:
-                    total_size += file_size
-                    file_count += 1
-                    
-                # Check if folder exceeds limits
-                if (file_count > CLEANUP_CONFIG["MAX_FILES"] or 
-                    total_size > CLEANUP_CONFIG["MAX_SIZE"]):
-                    # Remove oldest files
-                    files = [(f, os.path.getctime(os.path.join(folder, f))) 
-                            for f in os.listdir(folder)]
-                    files.sort(key=lambda x: x[1])
-                    
-                    for f, _ in files[:file_count - CLEANUP_CONFIG["MAX_FILES"]]:
-                        f_path = os.path.join(folder, f)
-                        if os.path.isfile(f_path):
-                            os.remove(f_path)
-                            logger.info(f"Removed file due to size limit: {f_path}")
-                        elif os.path.isdir(f_path):
-                            shutil.rmtree(f_path)
-                            logger.info(f"Removed directory due to size limit: {f_path}")
-                            
             except Exception as e:
                 logger.error(f"Error cleaning up {file_path}: {str(e)}")
 
@@ -165,74 +131,6 @@ def save_uploaded_file(file: UploadFile, folder: str) -> str:
     except Exception as e:
         logger.error(f"Error saving file {file.filename}: {str(e)}")
         raise HTTPException(status_code=500, detail=ERROR_MESSAGES["processing_error"])
-
-def get_error_message(error_key: str) -> str:
-    """Get error message from configuration"""
-    return ERROR_MESSAGES.get(error_key, "An unknown error occurred.")
-
-def setup_logging() -> None:
-    """Setup logging configuration"""
-    logging.basicConfig(
-        level=getattr(logging, LOG_CONFIG["LEVEL"]),
-        format=LOG_CONFIG["FORMAT"],
-        handlers=[
-            logging.StreamHandler() if LOG_CONFIG["CONSOLE"] else logging.NullHandler(),
-            logging.handlers.RotatingFileHandler(
-                LOG_CONFIG["FILE"],
-                maxBytes=LOG_CONFIG["MAX_BYTES"],
-                backupCount=LOG_CONFIG["BACKUP_COUNT"]
-            ) if LOG_CONFIG["FILE"] else logging.NullHandler()
-        ]
-    )
-
-def is_session_expired(session_id: str, expiry_days: int) -> bool:
-    """Check if a session is expired"""
-    session_dir = os.path.join(FOLDERS["UPLOAD"], session_id)
-    if not os.path.exists(session_dir):
-        return True
-        
-    session_time = datetime.fromtimestamp(os.path.getctime(session_dir))
-    return datetime.now() - session_time > timedelta(days=expiry_days)
-
-def get_system_metrics() -> Dict[str, Any]:
-    """Get system performance metrics"""
-    if not MONITORING_CONFIG["ENABLED"]:
-        return {}
-        
-    try:
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        
-        metrics = {
-            "cpu_usage": cpu_percent,
-            "memory_usage": memory.percent,
-            "disk_usage": disk.percent,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        # Check for alerts
-        alerts = []
-        if cpu_percent > MONITORING_CONFIG["ALERT_THRESHOLD"]["CPU_USAGE"]:
-            alerts.append(f"High CPU usage: {cpu_percent}%")
-        if memory.percent > MONITORING_CONFIG["ALERT_THRESHOLD"]["MEMORY_USAGE"]:
-            alerts.append(f"High memory usage: {memory.percent}%")
-        if disk.percent > MONITORING_CONFIG["ALERT_THRESHOLD"]["DISK_USAGE"]:
-            alerts.append(f"High disk usage: {disk.percent}%")
-            
-        if alerts:
-            logger.warning("System alerts: " + ", ".join(alerts))
-            
-        return metrics
-    except Exception as e:
-        logger.error(f"Error getting system metrics: {str(e)}")
-        return {}
-
-def validate_api_key(api_key: Optional[str] = None) -> bool:
-    """Validate API key"""
-    if not api_key:
-        return False
-    return api_key == SECURITY_CONFIG["API_KEY"]
 
 def get_dicom_metadata(file_path: str) -> Dict[str, Any]:
     """Extract metadata from DICOM file"""

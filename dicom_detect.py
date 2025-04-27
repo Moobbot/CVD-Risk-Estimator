@@ -8,37 +8,34 @@ Script để đọc ảnh DICOM, tiền xử lý và dự đoán nguy cơ CVD.
 """
 
 import os
-import sys
 import argparse
-import logging
-from datetime import datetime
-
 from matplotlib import pyplot as plt
 import numpy as np
 
-from config import (
-    FOLDERS,
-    MODEL_CONFIG,
-    ERROR_MESSAGES,
-    LOG_CONFIG,
-    IS_DEV
-)
+from logger import logger, log_message
 
 from dicom_processor import (
     load_dicom_series,
     preprocess_heart_ct,
     generate_report,
     visualize_results,
-    get_risk_details
 )
 
-from model_processor import (
-    HeartDetector,
-    Tri2DNetModel
-)
+from model_processor import HeartDetector, Tri2DNetModel
 
-# Setup logging
-logger = logging.getLogger(__name__)
+def debug_visualization(ct_volume, output_dir="debug"):
+    """
+    Hàm tiện ích để lưu ảnh debug
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    mid_slice = ct_volume.shape[0] // 2
+    for i, idx in enumerate([mid_slice - 10, mid_slice, mid_slice + 10]):
+        if 0 <= idx < ct_volume.shape[0]:
+            plt.imsave(
+                os.path.join(output_dir, f"debug_slice_{idx}.png"),
+                ct_volume[idx],
+                cmap="gray",
+            )
 
 def main(dicom_dir, visualize=True, detection_method="auto", debug=False):
     """
@@ -58,123 +55,41 @@ def main(dicom_dir, visualize=True, detection_method="auto", debug=False):
     try:
         # 1. Đọc ảnh DICOM
         ct_volume, metadata = load_dicom_series(dicom_dir)
-        if IS_DEV:
-            print(f"Đã đọc CT volume với kích thước {ct_volume.shape}")
-        logger.info(f"Đã đọc CT volume với kích thước {ct_volume.shape}")
+        log_message(logger, "info", f"Đã đọc CT volume với kích thước {ct_volume.shape}")
 
         # Debug logging
         if debug:
-            mid_slice = ct_volume.shape[0] // 2
-            for i, idx in enumerate([mid_slice - 10, mid_slice, mid_slice + 10]):
-                if 0 <= idx < ct_volume.shape[0]:
-                    plt.imsave(f"debug_slice_{idx}.png", ct_volume[idx], cmap="gray")
-            if IS_DEV:
-                print("CT volume shape:", ct_volume.shape)
-                print("CT value range:", np.min(ct_volume), np.max(ct_volume))
-            logger.debug(f"CT volume shape: {ct_volume.shape}")
-            logger.debug(f"CT value range: {np.min(ct_volume)}, {np.max(ct_volume)}")
+            debug_visualization(ct_volume)
+            log_message(logger, "debug", f"CT volume shape: {ct_volume.shape}")
+            log_message(logger, "debug", f"CT value range: {np.min(ct_volume)}, {np.max(ct_volume)}")
 
         # 2. Phát hiện vùng tim
         heart_detector = HeartDetector()
+        heart_region = heart_detector.detect_heart_region(ct_volume)
+        log_message(logger, "info", f"Đã phát hiện vùng tim: {heart_region}")
 
-        # Lựa chọn phương pháp phát hiện tim
-        if detection_method == "simple":
-            if IS_DEV:
-                print(
-                    "Sử dụng phương pháp phát hiện tim đơn giản theo lựa chọn của người dùng."
-                )
-            logger.info(
-                "Sử dụng phương pháp phát hiện tim đơn giản theo lựa chọn của người dùng."
-            )
-            heart_bbox = heart_detector._simple_heart_detection(ct_volume)
-        elif detection_method == "model":
-            if heart_detector.model is None:
-                if IS_DEV:
-                    print(
-                        "Yêu cầu dùng mô hình nhưng mô hình không có sẵn. Sử dụng phương pháp đơn giản."
-                    )
-                logger.warning(
-                    "Yêu cầu dùng mô hình nhưng mô hình không có sẵn. Sử dụng phương pháp đơn giản."
-                )
-                heart_bbox = heart_detector._simple_heart_detection(ct_volume)
-            else:
-                if IS_DEV:
-                    print("Sử dụng mô hình phát hiện tim theo lựa chọn của người dùng.")
-                logger.info("Sử dụng mô hình phát hiện tim theo lựa chọn của người dùng.")
-                heart_bbox = heart_detector.detect_heart_region(ct_volume)
-        else:  # auto
-            if IS_DEV:
-                print("Tự động lựa chọn phương pháp phát hiện tim tốt nhất.")
-            logger.info("Tự động lựa chọn phương pháp phát hiện tim tốt nhất.")
-            heart_bbox = heart_detector.detect_heart_region(ct_volume)
+        # 3. Tiền xử lý ảnh tim
+        processed_ct = preprocess_heart_ct(ct_volume, heart_region)
+        log_message(logger, "info", f"Đã tiền xử lý ảnh tim, kích thước: {processed_ct.shape}")
 
-        # Debug detector
-        if debug:
-            heart_detector.debug_detection(ct_volume)
-
-        if IS_DEV:
-            print(f"Vùng tim: {heart_bbox}")
-        logger.info(f"Vùng tim: {heart_bbox}")
-
-        # 3. Tiền xử lý ảnh CT - với 3 kênh
-        processed_ct = preprocess_heart_ct(ct_volume, heart_bbox)
-        if IS_DEV:
-            print(f"Kích thước sau tiền xử lý: {processed_ct.shape}")
-        logger.info(f"Kích thước sau tiền xử lý: {processed_ct.shape}")
-
-        # 4. Tải mô hình và dự đoán
+        # 4. Dự đoán nguy cơ CVD
         model = Tri2DNetModel()
-
-        # Try the modified predict_risk method
         risk_score = model.predict_risk(processed_ct)
-        if IS_DEV:
-            print(f"Điểm nguy cơ CVD: {risk_score:.5f}")
-        logger.info(f"Điểm nguy cơ CVD: {risk_score:.5f}")
-
-        # Lấy thông tin chi tiết về mức độ nguy cơ
-        risk_details = get_risk_details(risk_score)
-        if IS_DEV:
-            print(
-                f"Điểm nguy cơ CVD: {risk_score:.5f} - Mức độ: {risk_details['risk_level']}"
-            )
-            print(f"Khuyến nghị: {', '.join(risk_details['recommendations'])}")
-        logger.info(
-            f"Điểm nguy cơ CVD: {risk_score:.5f} - Mức độ: {risk_details['risk_level']}"
-        )
-        logger.info(f"Khuyến nghị: {', '.join(risk_details['recommendations'])}")
+        log_message(logger, "info", f"Điểm nguy cơ CVD: {risk_score:.5f}")
 
         # 5. Tạo báo cáo
-        generate_report(metadata, risk_score)
+        report = generate_report(metadata, risk_score)
+        log_message(logger, "info", "Đã tạo báo cáo")
 
-        # 6. Trực quan hóa kết quả (nếu yêu cầu)
+        # 6. Hiển thị kết quả
         if visualize:
-            visualize_results(ct_volume, heart_bbox, risk_score)
-            if IS_DEV:
-                print(f"Đã lưu kết quả trực quan vào 'cvd_risk_result.png'")
-            logger.info(f"Đã lưu kết quả trực quan vào 'cvd_risk_result.png'")
+            visualize_results(ct_volume, heart_region, risk_score)
+            log_message(logger, "info", "Đã hiển thị kết quả trực quan")
 
-        # 7. Lưu thông tin chi tiết dưới dạng JSON
-        if debug:
-            import json
-
-            details = {
-                "patient_id": metadata.get("PatientID", "N/A"),
-                "risk_score": float(risk_score),
-                "risk_details": risk_details,
-                "prediction_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            }
-            with open("cvd_prediction_details.json", "w") as f:
-                json.dump(details, f, indent=4)
-            if IS_DEV:
-                print("Đã lưu thông tin chi tiết vào 'cvd_prediction_details.json'")
-            logger.info("Đã lưu thông tin chi tiết vào 'cvd_prediction_details.json'")
-
-        return risk_score
+        return report
 
     except Exception as e:
-        if IS_DEV:
-            print(f"Lỗi trong quá trình xử lý: {e}")
-        logger.error(f"Lỗi: {e}")
+        log_message(logger, "error", f"Lỗi trong quá trình xử lý: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -204,10 +119,6 @@ if __name__ == "__main__":
     parser.set_defaults(visualize=True)
 
     args = parser.parse_args()
-
-    # Chọn phương pháp phát hiện tim
-    detection_method = args.detection_method
-
-    main(args.dicom_dir, args.visualize, detection_method, args.debug)
+    main(args.dicom_dir, args.visualize, args.detection_method, args.debug)
 
 # python dicom_detect.py "./uploads/Tuong_20230828"

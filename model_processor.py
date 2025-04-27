@@ -1,20 +1,14 @@
 import os
 import sys
 import torch
-import logging
 import numpy as np
-from config import (
-    FOLDERS,
-    MODEL_CONFIG,
-    ERROR_MESSAGES,
-    LOG_CONFIG,
-    IS_DEV
-)
+from config import FOLDERS, MODEL_CONFIG, ERROR_MESSAGES
 
 # Thêm đường dẫn đến thư mục detector từ config
 sys.path.append(FOLDERS["DETECTOR"])
 
-logger = logging.getLogger(__name__)
+from logger import logger, log_message
+
 
 class HeartDetector:
     """
@@ -25,66 +19,54 @@ class HeartDetector:
         """
         Khởi tạo detector với mô hình RetinaNet đã được huấn luyện
         """
-        if IS_DEV:
-            print("Khởi tạo detector vùng tim...")
-        logger.info("Khởi tạo detector vùng tim...")
+        log_message(logger, "info", "Khởi tạo detector vùng tim...")
 
         # Kiểm tra đường dẫn mô hình có tồn tại không
         if not os.path.exists(model_path):
-            if IS_DEV:
-                print(f"Thư mục mô hình {model_path} không tồn tại, tạo thư mục mới.")
-            logger.info(f"Thư mục mô hình {model_path} không tồn tại, tạo thư mục mới.")
+            log_message(
+                logger,
+                "info",
+                f"Thư mục mô hình {model_path} không tồn tại, tạo thư mục mới.",
+            )
             try:
                 os.makedirs(model_path, exist_ok=True)
             except Exception as e:
-                logger.error(f"Không thể tạo thư mục: {e}")
+                log_message(logger, "error", f"Không thể tạo thư mục: {e}")
 
         # Kiểm tra CUDA
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        if IS_DEV:
-            print(f"Sử dụng thiết bị: {self.device}")
-        logger.info(f"Sử dụng thiết bị: {self.device}")
+        log_message(logger, "info", f"Sử dụng thiết bị: {self.device}")
 
         try:
             # Tải mô hình RetinaNet
             model_file = os.path.join(model_path, "retinanet_heart.pt")
             if os.path.exists(model_file):
-                if IS_DEV:
-                    print(f"Đang tải mô hình từ {model_file}...")
-                logger.info(f"Đang tải mô hình từ {model_file}...")
+                log_message(logger, "info", f"Đang tải mô hình từ {model_file}...")
                 # Thêm weights_only=True để tránh warning
                 self.model = torch.load(model_file, map_location=self.device)
                 self.model.eval()
-                if IS_DEV:
-                    print("Đã tải mô hình detector thành công.")
-                logger.info("Đã tải mô hình detector thành công.")
+                log_message(logger, "info", "Đã tải mô hình detector thành công.")
             else:
-                if IS_DEV:
-                    print(f"Không tìm thấy file mô hình tại: {model_file}")
-                logger.warning(f"Không tìm thấy file mô hình tại: {model_file}")
+                log_message(
+                    logger, "warning", f"Không tìm thấy file mô hình tại: {model_file}"
+                )
                 # Thử tìm mô hình trong thư mục detector từ config
                 alt_model_file = os.path.join(FOLDERS["DETECTOR"], "retinanet_heart.pt")
                 if os.path.exists(alt_model_file):
-                    if IS_DEV:
-                        print(f"Tìm thấy mô hình tại đường dẫn thay thế: {alt_model_file}")
-                    logger.info(f"Tìm thấy mô hình tại đường dẫn thay thế: {alt_model_file}")
+                    log_message(
+                        logger,
+                        "info",
+                        f"Tìm thấy mô hình tại đường dẫn thay thế: {alt_model_file}",
+                    )
                     self.model = torch.load(alt_model_file, map_location=self.device)
                     self.model.eval()
-                    if IS_DEV:
-                        print("Đã tải mô hình detector thành công.")
-                    logger.info("Đã tải mô hình detector thành công.")
+                    log_message(logger, "info", "Đã tải mô hình detector thành công.")
                 else:
-                    if IS_DEV:
-                        print("Không tìm thấy mô hình detector.")
-                    logger.warning("Không tìm thấy mô hình detector.")
+                    log_message(logger, "warning", "Không tìm thấy mô hình detector.")
                     self.model = None
         except Exception as e:
-            if IS_DEV:
-                print(f"Lỗi khi tải mô hình detector: {e}")
-            logger.error(f"Lỗi khi tải mô hình detector: {e}")
-            if IS_DEV:
-                print("Sử dụng simple detector...")
-            logger.info("Sử dụng simple detector...")
+            log_message(logger, "error", f"Lỗi khi tải mô hình detector: {e}")
+            log_message(logger, "info", "Sử dụng simple detector...")
             self.model = None
 
     def _normalize_for_detection(self, img_slice):
@@ -121,30 +103,95 @@ class HeartDetector:
         y_max = min(ct_volume.shape[1], center_y + y_size // 4)
         z_max = min(ct_volume.shape[0], center_z + z_size // 4)
 
-        if IS_DEV:
-            print(
-                f"Sử dụng phương pháp simple detection: [{x_min}, {y_min}, {z_min}] - [{x_max}, {y_max}, {z_max}]"
-            )
-        logger.info(
-            f"Sử dụng phương pháp simple detection: [{x_min}, {y_min}, {z_min}] - [{x_max}, {y_max}, {z_max}]"
+        log_message(
+            logger,
+            "info",
+            f"Sử dụng phương pháp simple detection: [{x_min}, {y_min}, {z_min}] - [{x_max}, {y_max}, {z_max}]",
         )
         return (x_min, y_min, z_min, x_max, y_max, z_max)
+
+    def _process_detection_output(self, output):
+        """
+        Xử lý output từ mô hình detector
+        """
+        if isinstance(output, tuple) and len(output) >= 2:
+            return output[0], output[1]
+        elif isinstance(output, list) and len(output) >= 2:
+            return output[0], output[1]
+        elif isinstance(output, dict) and "scores" in output and "boxes" in output:
+            return output["scores"], output["boxes"]
+        return None, None
+
+    def _process_scores_and_boxes(self, scores, boxes):
+        """
+        Xử lý scores và boxes từ mô hình detector
+        """
+        if isinstance(scores, (int, float)):
+            if (
+                isinstance(boxes, (list, tuple, np.ndarray, torch.Tensor))
+                and len(boxes) >= 4
+            ):
+                return [boxes], [scores]
+            return None, None
+
+        if isinstance(scores, (np.ndarray, torch.Tensor)):
+            if isinstance(scores, np.ndarray):
+                keep_indices = np.where(scores > 0.3)[0]
+            else:  # torch.Tensor
+                if len(scores.shape) > 1:
+                    keep_indices = torch.where(scores[0] > 0.3)[0]
+                else:
+                    keep_indices = torch.where(scores > 0.3)[0]
+                keep_indices = keep_indices.cpu().numpy()
+
+            if len(keep_indices) == 0:
+                return None, None
+
+            if isinstance(scores, np.ndarray):
+                if len(scores.shape) > 1:
+                    scores_slice = scores[0, keep_indices]
+                else:
+                    scores_slice = scores[keep_indices]
+            else:  # torch.Tensor
+                if len(scores.shape) > 1:
+                    scores_slice = scores[0, keep_indices].cpu().numpy()
+                else:
+                    scores_slice = scores[keep_indices].cpu().numpy()
+
+            if isinstance(boxes, np.ndarray):
+                if len(boxes.shape) > 1:
+                    if len(boxes.shape) > 2:
+                        boxes_slice = boxes[0, keep_indices].copy()
+                    else:
+                        boxes_slice = boxes[keep_indices].copy()
+                else:
+                    boxes_slice = [boxes]
+            elif isinstance(boxes, torch.Tensor):
+                if len(boxes.shape) > 1:
+                    if len(boxes.shape) > 2:
+                        boxes_slice = boxes[0, keep_indices].cpu().numpy()
+                    else:
+                        boxes_slice = boxes[keep_indices].cpu().numpy()
+                else:
+                    boxes_slice = [boxes.cpu().numpy()]
+            else:
+                return None, None
+
+            return boxes_slice, scores_slice
+
+        return None, None
 
     def detect_heart_region(self, ct_volume):
         """
         Phát hiện vùng tim từ ảnh CT
         """
-        if IS_DEV:
-            print("Đang phát hiện vùng tim...")
-        logger.info("Đang phát hiện vùng tim...")
+        log_message(logger, "info", "Đang phát hiện vùng tim...")
 
         if self.model is None:
-            if IS_DEV:
-                print(
-                    "Không tìm thấy mô hình detector, sử dụng phương pháp simple detection."
-                )
-            logger.info(
-                "Không tìm thấy mô hình detector, sử dụng phương pháp simple detection."
+            log_message(
+                logger,
+                "info",
+                "Không tìm thấy mô hình detector, sử dụng phương pháp simple detection.",
             )
             return self._simple_heart_detection(ct_volume)
 
@@ -174,74 +221,15 @@ class HeartDetector:
             with torch.no_grad():
                 try:
                     output = self.model(img_tensor)
-                    
-                    # Xử lý output dựa vào kiểu
-                    if isinstance(output, tuple):
-                        if len(output) >= 2:
-                            scores, boxes = output[0], output[1]
-                    elif isinstance(output, list):
-                        if len(output) >= 2:
-                            scores, boxes = output[0], output[1]
-                    elif isinstance(output, dict):
-                        if "scores" in output and "boxes" in output:
-                            scores = output["scores"]
-                            boxes = output["boxes"]
-                    else:
+                    scores, boxes = self._process_detection_output(output)
+                    if scores is None or boxes is None:
                         continue
 
-                    # Xử lý scores và boxes
-                    if isinstance(scores, (int, float)):
-                        if isinstance(boxes, (list, tuple, np.ndarray, torch.Tensor)):
-                            if len(boxes) >= 4:
-                                boxes_slice = [boxes]
-                                scores_slice = [scores]
-                            else:
-                                continue
-                        else:
-                            continue
-                    elif isinstance(scores, (np.ndarray, torch.Tensor)):
-                        if isinstance(scores, np.ndarray):
-                            keep_indices = np.where(scores > 0.3)[0]
-                            if len(keep_indices) > 0:
-                                if len(scores.shape) > 1:
-                                    scores_slice = scores[0, keep_indices]
-                                else:
-                                    scores_slice = scores[keep_indices]
-                            else:
-                                continue
-                        else:  # torch.Tensor
-                            if len(scores.shape) > 1:
-                                keep_indices = torch.where(scores[0] > 0.3)[0]
-                                if len(keep_indices) > 0:
-                                    scores_slice = scores[0, keep_indices].cpu().numpy()
-                                else:
-                                    continue
-                            else:
-                                keep_indices = torch.where(scores > 0.3)[0]
-                                if len(keep_indices) > 0:
-                                    scores_slice = scores[keep_indices].cpu().numpy()
-                                else:
-                                    continue
-
-                        # Lấy boxes tương ứng
-                        if isinstance(boxes, np.ndarray):
-                            if len(boxes.shape) > 1:
-                                if len(boxes.shape) > 2:
-                                    boxes_slice = boxes[0, keep_indices].copy()
-                                else:
-                                    boxes_slice = boxes[keep_indices].copy()
-                            else:
-                                boxes_slice = [boxes]
-                        elif isinstance(boxes, torch.Tensor):
-                            if len(boxes.shape) > 1:
-                                if len(boxes.shape) > 2:
-                                    boxes_slice = boxes[0, keep_indices].cpu().numpy()
-                                else:
-                                    boxes_slice = boxes[keep_indices].cpu().numpy()
-                            else:
-                                boxes_slice = [boxes.cpu().numpy()]
-                        else:
-                            continue
+                    boxes_slice, scores_slice = self._process_scores_and_boxes(
+                        scores, boxes
+                    )
+                    if boxes_slice is None or scores_slice is None:
+                        continue
 
                     # Thêm boxes và scores vào danh sách
                     for box, score in zip(boxes_slice, scores_slice):
@@ -255,19 +243,17 @@ class HeartDetector:
                             scores_all.append(float(score))
 
                 except Exception as e:
-                    if IS_DEV:
-                        print(f"Error processing detection results: {e}")
-                    logger.error(f"Error processing detection results: {e}")
+                    log_message(
+                        logger, "error", f"Error processing detection results: {e}"
+                    )
                     continue
 
         # If no heart region was detected, use simple detection
         if not boxes_all:
-            if IS_DEV:
-                print(
-                    "Không phát hiện được vùng tim, sử dụng phương pháp simple detection."
-                )
-            logger.info(
-                "Không phát hiện được vùng tim, sử dụng phương pháp simple detection."
+            log_message(
+                logger,
+                "info",
+                "Không phát hiện được vùng tim, sử dụng phương pháp simple detection.",
             )
             return self._simple_heart_detection(ct_volume)
 
@@ -293,12 +279,10 @@ class HeartDetector:
             y_max = min(ct_volume.shape[1], y_max + height * 0.1)
             z_max = min(ct_volume.shape[0], z_max + depth)
 
-            if IS_DEV:
-                print(
-                    f"Đã phát hiện vùng tim: [{x_min:.1f}, {y_min:.1f}, {z_min:.1f}] - [{x_max:.1f}, {y_max:.1f}, {z_max:.1f}]"
-                )
-            logger.info(
-                f"Đã phát hiện vùng tim: [{x_min:.1f}, {y_min:.1f}, {z_min:.1f}] - [{x_max:.1f}, {y_max:.1f}, {z_max:.1f}]"
+            log_message(
+                logger,
+                "info",
+                f"Đã phát hiện vùng tim: [{x_min:.1f}, {y_min:.1f}, {z_min:.1f}] - [{x_max:.1f}, {y_max:.1f}, {z_max:.1f}]",
             )
             return (
                 int(x_min),
@@ -309,10 +293,9 @@ class HeartDetector:
                 int(z_max),
             )
         except Exception as e:
-            if IS_DEV:
-                print(f"Error processing detection results: {e}")
-            logger.error(f"Error processing detection results: {e}")
+            log_message(logger, "error", f"Error processing detection results: {e}")
             return self._simple_heart_detection(ct_volume)
+
 
 class Tri2DNetModel:
     """
@@ -323,14 +306,14 @@ class Tri2DNetModel:
         """
         Khởi tạo và tải mô hình Tri2D-Net
         """
-        if IS_DEV:
-            print("Đang khởi tạo mô hình Tri2D-Net...")
-        logger.info("Đang khởi tạo mô hình Tri2D-Net...")
+        log_message(logger, "info", "Đang khởi tạo mô hình Tri2D-Net...")
 
         try:
             # Import model module
             sys.path.append("./")  # Đảm bảo có thể import từ thư mục hiện tại
-            from tri_2d_net.init_model import init_model  # Sử dụng init_model từ tri_2d_net
+            from tri_2d_net.init_model import (
+                init_model,
+            )  # Sử dụng init_model từ tri_2d_net
 
             # Khởi tạo model
             self.model = init_model()  # Sử dụng init_model để khởi tạo
@@ -338,15 +321,19 @@ class Tri2DNetModel:
             # Tải checkpoint
             checkpoint_path = os.path.join(model_path, MODEL_CONFIG["CHECKPOINT_PATH"])
             if not os.path.exists(checkpoint_path):
-                if IS_DEV:
-                    print(f"Không tìm thấy checkpoint tại: {checkpoint_path}")
-                logger.warning(f"Không tìm thấy checkpoint tại: {checkpoint_path}")
+                log_message(
+                    logger,
+                    "warning",
+                    f"Không tìm thấy checkpoint tại: {checkpoint_path}",
+                )
                 # Thử tìm trong thư mục hiện tại
                 alt_checkpoint_path = MODEL_CONFIG["CHECKPOINT_PATH"]
                 if os.path.exists(alt_checkpoint_path):
-                    if IS_DEV:
-                        print(f"Tìm thấy checkpoint tại đường dẫn thay thế: {alt_checkpoint_path}")
-                    logger.info(f"Tìm thấy checkpoint tại đường dẫn thay thế: {alt_checkpoint_path}")
+                    log_message(
+                        logger,
+                        "info",
+                        f"Tìm thấy checkpoint tại đường dẫn thay thế: {alt_checkpoint_path}",
+                    )
                     checkpoint_path = alt_checkpoint_path
                 else:
                     raise ValueError(ERROR_MESSAGES["model_not_found"])
@@ -356,23 +343,49 @@ class Tri2DNetModel:
                 checkpoint_path,
                 map_location="cuda" if torch.cuda.is_available() else "cpu",
             )
-            
+
             # Kiểm tra và tải state dict
             if isinstance(state_dict, dict) and "state_dict" in state_dict:
                 state_dict = state_dict["state_dict"]
-            
+
             # Tải state dict vào model
             self.model.encoder.load_state_dict(state_dict)
             self.model.encoder.eval()
 
-            if IS_DEV:
-                print("Đã tải mô hình Tri2D-Net thành công.")
-            logger.info("Đã tải mô hình Tri2D-Net thành công.")
+            log_message(logger, "info", "Đã tải mô hình Tri2D-Net thành công.")
         except Exception as e:
-            if IS_DEV:
-                print(f"Lỗi khi tải mô hình Tri2D-Net: {e}")
-            logger.error(f"Lỗi khi tải mô hình Tri2D-Net: {e}")
+            log_message(logger, "error", f"Lỗi khi tải mô hình Tri2D-Net: {e}")
             self.model = None
+
+    def _process_prediction_output(self, pred_prob):
+        """
+        Xử lý output từ mô hình dự đoán
+        """
+        if isinstance(pred_prob, (int, float)):
+            return float(pred_prob)
+        elif isinstance(pred_prob, torch.Tensor):
+            if pred_prob.numel() == 1 or len(pred_prob.shape) == 0:
+                return pred_prob.item()
+            elif pred_prob.shape[0] == 1:
+                return float(pred_prob[0])
+            elif pred_prob.shape[0] >= 2:
+                return float(pred_prob[1])
+            return float(pred_prob.mean())
+        elif isinstance(pred_prob, np.ndarray):
+            if pred_prob.size == 1:
+                return float(pred_prob.item())
+            elif pred_prob.shape[0] == 1:
+                return float(pred_prob[0])
+            elif pred_prob.shape[0] >= 2:
+                return float(pred_prob[1])
+            return float(np.mean(pred_prob))
+        else:
+            log_message(
+                logger,
+                "warning",
+                f"WARNING: Không nhận dạng được kiểu dữ liệu đầu ra: {type(pred_prob)}",
+            )
+            return 0.5
 
     def predict_risk(self, processed_ct):
         """
@@ -390,9 +403,7 @@ class Tri2DNetModel:
         if self.model is None:
             raise ValueError(ERROR_MESSAGES["model_not_found"])
 
-        if IS_DEV:
-            print("Đang dự đoán nguy cơ CVD...")
-        logger.info("Đang dự đoán nguy cơ CVD...")
+        log_message(logger, "info", "Đang dự đoán nguy cơ CVD...")
 
         # Chuyển đổi sang tensor
         ct_tensor = torch.from_numpy(processed_ct).float()
@@ -400,76 +411,38 @@ class Tri2DNetModel:
         # Kiểm tra kích thước đầu vào
         if ct_tensor.dim() == 4:
             if ct_tensor.shape[0] < 2:
-                if IS_DEV:
-                    print("Input chỉ có 1 kênh, nhân bản thành 3 kênh...")
-                logger.info("Input chỉ có 1 kênh, nhân bản thành 3 kênh...")
+                log_message(
+                    logger, "info", "Input chỉ có 1 kênh, nhân bản thành 3 kênh..."
+                )
                 ct_tensor = ct_tensor.repeat(3, 1, 1, 1)
 
-        if IS_DEV:
-            print(f"Kích thước tensor đầu vào: {ct_tensor.shape}")
-        logger.info(f"Kích thước tensor đầu vào: {ct_tensor.shape}")
+        log_message(logger, "info", f"Kích thước tensor đầu vào: {ct_tensor.shape}")
 
         # Thực hiện dự đoán
         with torch.no_grad():
             try:
                 # Gọi aug_transform của model
                 pred_prob = self.model.aug_transform(ct_tensor)
-                
-                if IS_DEV:
-                    print(
-                        f"pred_prob shape: {pred_prob.shape if hasattr(pred_prob, 'shape') else 'scalar'}"
-                    )
-                    print(f"pred_prob: {pred_prob}")
-                logger.info(
-                    f"pred_prob shape: {pred_prob.shape if hasattr(pred_prob, 'shape') else 'scalar'}"
+
+                log_message(
+                    logger,
+                    "info",
+                    f"pred_prob shape: {pred_prob.shape if hasattr(pred_prob, 'shape') else 'scalar'}",
                 )
-                logger.info(f"pred_prob: {pred_prob}")
+                log_message(logger, "info", f"pred_prob: {pred_prob}")
 
                 # Lấy giá trị xác suất
-                if isinstance(pred_prob, (int, float)):
-                    risk_score = float(pred_prob)
-                elif isinstance(pred_prob, torch.Tensor):
-                    if pred_prob.numel() == 1:
-                        risk_score = pred_prob.item()
-                    elif len(pred_prob.shape) == 0:
-                        risk_score = pred_prob.item()
-                    elif pred_prob.shape[0] == 1:
-                        risk_score = float(pred_prob[0])
-                    elif pred_prob.shape[0] >= 2:
-                        risk_score = float(pred_prob[1])
-                    else:
-                        risk_score = float(pred_prob.mean())
-                elif isinstance(pred_prob, np.ndarray):
-                    if pred_prob.size == 1:
-                        risk_score = float(pred_prob.item())
-                    elif pred_prob.shape[0] == 1:
-                        risk_score = float(pred_prob[0])
-                    elif pred_prob.shape[0] >= 2:
-                        risk_score = float(pred_prob[1])
-                    else:
-                        risk_score = float(np.mean(pred_prob))
-                else:
-                    if IS_DEV:
-                        print(
-                            f"WARNING: Không nhận dạng được kiểu dữ liệu đầu ra: {type(pred_prob)}"
-                        )
-                    logger.warning(
-                        f"WARNING: Không nhận dạng được kiểu dữ liệu đầu ra: {type(pred_prob)}"
-                    )
-                    risk_score = 0.5
+                risk_score = self._process_prediction_output(pred_prob)
 
                 # Đảm bảo risk_score nằm trong khoảng [0, 1]
                 risk_score = max(0.0, min(1.0, float(risk_score)))
 
             except Exception as e:
-                if IS_DEV:
-                    print(f"Lỗi trong quá trình dự đoán: {e}")
-                logger.error(f"Lỗi trong quá trình dự đoán: {e}")
+                log_message(logger, "error", f"Lỗi trong quá trình dự đoán: {e}")
                 import traceback
+
                 traceback.print_exc()
                 risk_score = 0.5
 
-        if IS_DEV:
-            print(f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
-        logger.info(f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
-        return risk_score 
+        log_message(logger, "info", f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
+        return risk_score

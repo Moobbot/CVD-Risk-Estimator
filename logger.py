@@ -1,5 +1,6 @@
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from config import LOG_CONFIG, IS_DEV
 
 def setup_logger(name):
@@ -25,11 +26,18 @@ def setup_logger(name):
     if LOG_CONFIG["CONSOLE"]:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
+        # Set encoding cho console handler
+        console_handler.stream.reconfigure(encoding='utf-8')
         logger.addHandler(console_handler)
     
     # Thêm handler cho file trong môi trường prod
     if LOG_CONFIG["FILE"]:
-        file_handler = logging.FileHandler(LOG_CONFIG["FILE"])
+        file_handler = RotatingFileHandler(
+            LOG_CONFIG["FILE"],
+            maxBytes=LOG_CONFIG["MAX_BYTES"],
+            backupCount=LOG_CONFIG["BACKUP_COUNT"],
+            encoding='utf-8'  # Set encoding cho file handler
+        )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
     
