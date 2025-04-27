@@ -54,26 +54,6 @@ def download_file(url, folder, filename):
         logger.error(f"Error downloading file: {e}")
         return None
 
-def download_model_from_drive(file_id, destination):
-    """
-    Tải mô hình từ Google Drive
-    
-    Parameters:
-    -----------
-    file_id: str
-        ID của file trên Google Drive
-    destination: str
-        Đường dẫn lưu file
-    """
-    try:
-        import gdown
-        url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, destination, quiet=False)
-        return True
-    except Exception as e:
-        print(f"Không thể tải mô hình từ Google Drive: {e}")
-        return False
-
 def download_and_extract_zip(url, extract_path="."):
     """
     Download a ZIP file from the given URL and extract its contents.
@@ -267,9 +247,6 @@ def check_gpu():
         return None
 
 
-# torch==1.13.1
-# torchio==0.18.74
-# torchvision==0.14.1
 def install_packages():
     print("Install Torch")
     packages = ["torch", "torchvision", "torchaudio"]
@@ -289,7 +266,7 @@ def install_packages():
             ]
         )
     else:
-        packages = ["torch<2.0.0", "torchvision<2.0.0", "torchaudio<2.0.0"]
+        packages = ["torch==2.5.1", "torchvision==0.20.1", "torchaudio==2.5.1"]
         subprocess.run(["pip", "install", *packages])
         print("No GPU detected, installing CPU version of PyTorch...")
 

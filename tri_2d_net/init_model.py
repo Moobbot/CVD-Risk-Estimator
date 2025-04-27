@@ -1,4 +1,4 @@
-from model import Model
+from tri_2d_net.model import Model
 
 def init_model():
     # Initialize model

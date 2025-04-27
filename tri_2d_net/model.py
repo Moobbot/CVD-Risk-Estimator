@@ -20,9 +20,9 @@ from scipy.ndimage import gaussian_filter
 from scipy.special import softmax
 from skimage.transform import resize as imresize
 
-from data import SoftmaxSampler
+from old_code.data import SoftmaxSampler
 from net import Tri2DNet, Branch
-from visualization import GradCam
+from tri_2d_net.visualization import GradCam
 
 
 class Model:

@@ -20,8 +20,6 @@ import argparse
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-from setup import download_model_from_drive
-
 sys.path.append("./detector")
 
 # Cài đặt định nghĩa đường dẫn
@@ -151,12 +149,6 @@ class HeartDetector:
         if not os.path.exists(model_path):
             print(f"Thư mục mô hình {model_path} không tồn tại, tạo thư mục mới.")
             # print(f"Mô hình không tồn tại tại {model_file}, thử tải từ drive...")
-            # model_id = "1TJ4jnarnt98KygPpuqkGWj9eKQE9-aa7"  # ID của mô hình trên Google Drive
-            # if download_model_from_drive(model_id, model_file):
-            #     print(f"Đã tải mô hình thành công vào {model_file}")
-            # else:
-            #     print("Không thể tải mô hình. Sử dụng simple detector.")
-            #     self.model = None
             try:
                 os.makedirs(model_path, exist_ok=True)
             except Exception as e:
@@ -673,7 +665,7 @@ class Tri2DNetModel:
         try:
             # Import model module
             sys.path.append("./")  # Đảm bảo có thể import từ thư mục hiện tại
-            from init_model import init_model
+            from tri_2d_net.init_model import init_model
 
             # Khởi tạo model
             self.model = init_model()

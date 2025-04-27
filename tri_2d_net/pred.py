@@ -7,7 +7,7 @@ import os
 
 import numpy as np
 
-from init_model import init_model
+from tri_2d_net.init_model import init_model
 
 parser = argparse.ArgumentParser(description='Prediction')
 parser.add_argument('--iter', default='8000', type=int,

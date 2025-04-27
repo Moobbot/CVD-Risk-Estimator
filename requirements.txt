@@ -1,5 +1,5 @@
-torch>=1.7.0
-torchvision>=0.8.0
+# torch==2.5.1
+# torchvision==0.20.1
 numpy>=1.19.0
 opencv-python>=4.5.0
 matplotlib>=3.3.0
@@ -12,4 +12,4 @@ pandas>=1.1.0
 SimpleITK
 pydicom
 pytorch-retinanet
-gdown
+# gdown

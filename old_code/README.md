@@ -6,25 +6,25 @@ Tri2D-Net is the **first** deep learning network trained for directly estimating
 
 ## Prerequisites
 
-- Python 3.10
-- PyTorch 2.5.1
+- Python 3.7
+- PyTorch 1.4
 - Computing device with GPU
 
 ## Getting starte
 
-### Installation
+### InstallationF
 
 - (Optional) Install [Anaconda3](https://www.anaconda.com/download/) for managing Python and packages
-- Install [CUDA 12.3](https://developer.nvidia.com/cuda-12-3-0-download-archive)
+- Install [CUDA 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base)
 - Install [PyTorch](http://pytorch.org/)
 
-Noted that our code is tested based on [PyTorch 2.5](https://pytorch.org/get-started/previous-versions/)
+Noted that our code is tested based on [PyTorch 1.4](https://pytorch.org/get-started/previous-versions/)
 
 ### Data
 
 #### Availability
 
-This model was trained on the [National Lung Screening Trial (NLST)](https://biometry.nci.nih.gov/cdas/learn/nlst/images/) dataset. The NLST is made publicly available by the National Cancer Institute. The detailed data information and the split of the NLST dataset used in the paper is contained in [NLST_data_split.csv](./old_code/NLST_data_split.csv).
+This model was trained on the [National Lung Screening Trial (NLST)](https://biometry.nci.nih.gov/cdas/learn/nlst/images/) dataset. The NLST is made publicly available by the National Cancer Institute. The detailed data information and the split of the NLST dataset used in the paper is contained in [NLST_data_split.csv](NLST_data_split.csv).
 
 #### Preprocess
 
