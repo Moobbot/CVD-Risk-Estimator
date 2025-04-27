@@ -3,10 +3,13 @@
 # @Time    : 2020/12/10
 
 # Heatmap Visualization with Grad-CAM
-
+import sys
 import torch.nn as nn
 
-from net import AttBranch, Branch
+sys.path.append("./")
+
+
+from tri_2d_net.net import AttBranch, Branch
 
 
 class GradCam(nn.Module):
@@ -37,12 +40,24 @@ class GradCam(nn.Module):
         self.f_output = None
 
     def regist(self):
-        self.model.module.branch_axial.backbone2d.register_backward_hook(self.save_axial_grad)
-        self.model.module.branch_axial.backbone2d.register_forward_hook(self.save_axial_output)
-        self.model.module.branch_coronal.backbone2d.register_backward_hook(self.save_coronal_grad)
-        self.model.module.branch_coronal.backbone2d.register_forward_hook(self.save_coronal_output)
-        self.model.module.branch_sagittal.backbone2d.register_backward_hook(self.save_sagittal_grad)
-        self.model.module.branch_sagittal.backbone2d.register_forward_hook(self.save_sagittal_output)
+        self.model.module.branch_axial.backbone2d.register_backward_hook(
+            self.save_axial_grad
+        )
+        self.model.module.branch_axial.backbone2d.register_forward_hook(
+            self.save_axial_output
+        )
+        self.model.module.branch_coronal.backbone2d.register_backward_hook(
+            self.save_coronal_grad
+        )
+        self.model.module.branch_coronal.backbone2d.register_forward_hook(
+            self.save_coronal_output
+        )
+        self.model.module.branch_sagittal.backbone2d.register_backward_hook(
+            self.save_sagittal_grad
+        )
+        self.model.module.branch_sagittal.backbone2d.register_forward_hook(
+            self.save_sagittal_output
+        )
 
     def save_axial_grad(self, model, grad_input, grad_output):
         self.axial_grad = grad_output
@@ -67,5 +82,11 @@ class GradCam(nn.Module):
         return self.model(input)[0]
 
     def get_intermediate_data(self):
-        return (self.axial_output, self.coronal_output, self.sagittal_output,
-                self.axial_grad, self.coronal_grad, self.sagittal_grad)
+        return (
+            self.axial_output,
+            self.coronal_output,
+            self.sagittal_output,
+            self.axial_grad,
+            self.coronal_grad,
+            self.sagittal_grad,
+        )
