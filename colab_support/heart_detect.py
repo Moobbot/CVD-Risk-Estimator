@@ -11,10 +11,18 @@ import cv2
 import numpy as np
 import torch
 import zipfile
-from google.colab import auth
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+import sys
 
+sys.path.append("detector")
+
+def load_detector():
+    print('Loading the heart detector...')
+    model = torch.load("detector/retinanet_heart.pt", weights_only=False)
+    return model
+
+retinanet = load_detector()
+retinanet = retinanet.cuda()
+retinanet.eval()
 
 def draw_caption(image, box, caption):
     b = np.array(box).astype(int)
@@ -24,12 +32,12 @@ def draw_caption(image, box, caption):
 
 def visualize(pic, bbox, caption, selected):
     pic = (pic * 255).astype('uint8')
-    draw_caption(pic, bbox, caption)
-    x1, y1, x2, y2 = bbox
-    if selected:
-        cv2.rectangle(pic, (x1, y1), (x2, y2), color=(0, 255, 0), thickness=2)
-    else:
-        cv2.rectangle(pic, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=1)
+    # draw_caption(pic, bbox, caption)
+    # x1, y1, x2, y2 = bbox
+    # if selected:
+    #     cv2.rectangle(pic, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    # else:
+    #     cv2.rectangle(pic, (x1, y1), (x2, y2), (0, 0, 255), 1)
     return pic
 
 
@@ -73,41 +81,7 @@ def continue_smooth(bbox_selected):
     return smoothed_selected
 
 
-def load_detector():
-    model_name = 'retinanet_heart.pt'
-    proj_name = 'detector'
-    zip_proj = proj_name + '.zip'
-    if not osp.isfile(zip_proj):
-        auth.authenticate_user()
-        drive_service = build('drive', 'v3')
-
-        print('Downloading the heart detector...')
-        file_id = '1TJ4jnarnt98KygPpuqkGWj9eKQE9-aa7'
-        request = drive_service.files().get_media(fileId=file_id)
-        param = io.BytesIO()
-        downloader = MediaIoBaseDownload(param, request)
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk()
-
-        param.seek(0)
-        with open(zip_proj, 'wb') as f:
-            f.write(param.read())
-    with zipfile.ZipFile(zip_proj, 'r') as zip_ref:
-        zip_ref.extractall('./')
-    print('Loading the heart detector...')
-    os.chdir(proj_name)
-    model = torch.load(model_name)
-    os.chdir('../')
-    return model
-
-
 def detector(whole_img):
-    retinanet = load_detector()
-    print('Detecting heart...')
-    retinanet = retinanet.cuda()
-    retinanet.eval()
-
     frame_num = whole_img.shape[0]
     bbox_list = list()
     bbox_selected = list()
