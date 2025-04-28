@@ -23,7 +23,7 @@ from skimage.transform import resize as imresize
 
 sys.path.append("./")
 
-from old_code.data import SoftmaxSampler
+from tri_2d_net.data import SoftmaxSampler
 from tri_2d_net.net import Tri2DNet, Branch
 from tri_2d_net.visualization import GradCam
 

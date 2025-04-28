@@ -15,7 +15,7 @@ API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/cvd-risk-prediction.git
+git clone https://github.com/Moobbot/cvd-risk-prediction.git
 cd cvd-risk-prediction
 ```
 

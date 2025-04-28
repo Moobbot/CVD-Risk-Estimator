@@ -25,7 +25,9 @@ FOLDERS = {
     "RESULTS": os.path.join(BASE_DIR, "results"),
     "LOGS": os.path.join(BASE_DIR, "logs"),
 }
+
 FOLDERS_DETECTOR = "./detector"
+
 # Create necessary directories
 for folder in FOLDERS.values():
     os.makedirs(folder, exist_ok=True)
@@ -37,9 +39,11 @@ FILE_RETENTION_DAYS = int(os.getenv("FILE_RETENTION_DAYS", 1))
 
 # Model Configuration
 MODEL_CONFIG = {
-    "CHECKPOINT_PATH": "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm",
+    "CHECKPOINT_PATH": os.path.join(
+        BASE_DIR, "checkpoint", "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm"
+    ),
     "MODEL_PATH": os.path.join(BASE_DIR, "checkpoint"),
-    "RETINANET_PATH": os.path.join(BASE_DIR, "detector", "retinanet_heart.pt"),
+    "RETINANET_PATH": os.path.join(BASE_DIR, "checkpoint", "retinanet_heart.pt"),
     "BATCH_SIZE": int(os.getenv("BATCH_SIZE", 16)),
     "DEVICE": os.getenv(
         "DEVICE", "cuda" if os.getenv("CUDA_VISIBLE_DEVICES") else "cpu"

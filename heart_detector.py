@@ -1,14 +1,10 @@
+
 import os
-import sys
-import torch
 import numpy as np
-from config import FOLDERS_DETECTOR, MODEL_CONFIG, ERROR_MESSAGES
+import torch
 
-# Thêm đường dẫn đến thư mục detector từ config
-sys.path.append(FOLDERS_DETECTOR)
-
-from logger import logger, log_message
-
+from logger import logger,  log_message
+from config import MODEL_CONFIG
 
 class HeartDetector:
     """
@@ -39,34 +35,17 @@ class HeartDetector:
 
         try:
             # Tải mô hình RetinaNet
-            model_file = os.path.join(model_path)
-            if os.path.exists(model_file):
-                log_message(logger, "info", f"Đang tải mô hình từ {model_file}...")
+            if os.path.exists(model_path):
+                log_message(logger, "info", f"Loading model at {model_path}...")
                 # Thêm weights_only=True để tránh warning
-                self.model = torch.load(model_file, map_location=self.device)
+                self.model = torch.load(model_path, map_location=self.device)
                 self.model.eval()
-                log_message(logger, "info", "Đã tải mô hình detector thành công.")
+                log_message(logger, "info", "Detector model loaded successfully.")
             else:
-                log_message(
-                    logger, "warning", f"Không tìm thấy file mô hình tại: {model_file}"
-                )
-                # Thử tìm mô hình trong thư mục detector từ config
-                alt_model_file = os.path.join(MODEL_CONFIG["RETINANET_PATH"])
-                if os.path.exists(alt_model_file):
-                    log_message(
-                        logger,
-                        "info",
-                        f"Tìm thấy mô hình tại đường dẫn thay thế: {alt_model_file}",
-                    )
-                    self.model = torch.load(alt_model_file, map_location=self.device)
-                    self.model.eval()
-                    log_message(logger, "info", "Đã tải mô hình detector thành công.")
-                else:
-                    log_message(logger, "warning", "Không tìm thấy mô hình detector.")
-                    self.model = None
+                log_message(logger, "warning", f"Model not found at: {model_path}")
         except Exception as e:
-            log_message(logger, "error", f"Lỗi khi tải mô hình detector: {e}")
-            log_message(logger, "info", "Sử dụng simple detector...")
+            log_message(logger, "error", f"Failed to load the detector model: {e}")
+            log_message(logger, "info", "Use simple detector...")
             self.model = None
 
     def _normalize_for_detection(self, img_slice):
@@ -295,154 +274,3 @@ class HeartDetector:
         except Exception as e:
             log_message(logger, "error", f"Error processing detection results: {e}")
             return self._simple_heart_detection(ct_volume)
-
-
-class Tri2DNetModel:
-    """
-    Class để load và sử dụng mô hình Tri2D-Net
-    """
-
-    def __init__(self, model_path=MODEL_CONFIG["MODEL_PATH"]):
-        """
-        Khởi tạo và tải mô hình Tri2D-Net
-        """
-        log_message(logger, "info", "Đang khởi tạo mô hình Tri2D-Net...")
-
-        try:
-            # Import model module
-            sys.path.append("./")  # Đảm bảo có thể import từ thư mục hiện tại
-            from tri_2d_net.init_model import (
-                init_model,
-            )  # Sử dụng init_model từ tri_2d_net
-
-            # Khởi tạo model
-            self.model = init_model()  # Sử dụng init_model để khởi tạo
-
-            # Tải checkpoint
-            checkpoint_path = os.path.join(model_path, MODEL_CONFIG["CHECKPOINT_PATH"])
-            if not os.path.exists(checkpoint_path):
-                log_message(
-                    logger,
-                    "warning",
-                    f"Không tìm thấy checkpoint tại: {checkpoint_path}",
-                )
-                # Thử tìm trong thư mục hiện tại
-                alt_checkpoint_path = MODEL_CONFIG["CHECKPOINT_PATH"]
-                if os.path.exists(alt_checkpoint_path):
-                    log_message(
-                        logger,
-                        "info",
-                        f"Tìm thấy checkpoint tại đường dẫn thay thế: {alt_checkpoint_path}",
-                    )
-                    checkpoint_path = alt_checkpoint_path
-                else:
-                    raise ValueError(ERROR_MESSAGES["model_not_found"])
-
-            # Tải state dict
-            state_dict = torch.load(
-                checkpoint_path,
-                map_location="cuda" if torch.cuda.is_available() else "cpu",
-            )
-
-            # Kiểm tra và tải state dict
-            if isinstance(state_dict, dict) and "state_dict" in state_dict:
-                state_dict = state_dict["state_dict"]
-
-            # Tải state dict vào model
-            self.model.encoder.load_state_dict(state_dict)
-            self.model.encoder.eval()
-
-            log_message(logger, "info", "Đã tải mô hình Tri2D-Net thành công.")
-        except Exception as e:
-            log_message(logger, "error", f"Lỗi khi tải mô hình Tri2D-Net: {e}")
-            self.model = None
-
-    def _process_prediction_output(self, pred_prob):
-        """
-        Xử lý output từ mô hình dự đoán
-        """
-        if isinstance(pred_prob, (int, float)):
-            return float(pred_prob)
-        elif isinstance(pred_prob, torch.Tensor):
-            if pred_prob.numel() == 1 or len(pred_prob.shape) == 0:
-                return pred_prob.item()
-            elif pred_prob.shape[0] == 1:
-                return float(pred_prob[0])
-            elif pred_prob.shape[0] >= 2:
-                return float(pred_prob[1])
-            return float(pred_prob.mean())
-        elif isinstance(pred_prob, np.ndarray):
-            if pred_prob.size == 1:
-                return float(pred_prob.item())
-            elif pred_prob.shape[0] == 1:
-                return float(pred_prob[0])
-            elif pred_prob.shape[0] >= 2:
-                return float(pred_prob[1])
-            return float(np.mean(pred_prob))
-        else:
-            log_message(
-                logger,
-                "warning",
-                f"WARNING: Không nhận dạng được kiểu dữ liệu đầu ra: {type(pred_prob)}",
-            )
-            return 0.5
-
-    def predict_risk(self, processed_ct):
-        """
-        Dự đoán nguy cơ CVD từ ảnh CT đã tiền xử lý
-
-        Parameters:
-        -----------
-        processed_ct: numpy.ndarray
-            Mảng đã được tiền xử lý, kích thước (3, 128, 128, 128)
-
-        Returns:
-        --------
-        float: Điểm nguy cơ CVD trong khoảng [0, 1]
-        """
-        if self.model is None:
-            raise ValueError(ERROR_MESSAGES["model_not_found"])
-
-        log_message(logger, "info", "Đang dự đoán nguy cơ CVD...")
-
-        # Chuyển đổi sang tensor
-        ct_tensor = torch.from_numpy(processed_ct).float()
-
-        # Kiểm tra kích thước đầu vào
-        if ct_tensor.dim() == 4:
-            if ct_tensor.shape[0] < 2:
-                log_message(
-                    logger, "info", "Input chỉ có 1 kênh, nhân bản thành 3 kênh..."
-                )
-                ct_tensor = ct_tensor.repeat(3, 1, 1, 1)
-
-        log_message(logger, "info", f"Kích thước tensor đầu vào: {ct_tensor.shape}")
-
-        # Thực hiện dự đoán
-        with torch.no_grad():
-            try:
-                # Gọi aug_transform của model
-                pred_prob = self.model.aug_transform(ct_tensor)
-
-                log_message(
-                    logger,
-                    "info",
-                    f"pred_prob shape: {pred_prob.shape if hasattr(pred_prob, 'shape') else 'scalar'}",
-                )
-                log_message(logger, "info", f"pred_prob: {pred_prob}")
-
-                # Lấy giá trị xác suất
-                risk_score = self._process_prediction_output(pred_prob)
-
-                # Đảm bảo risk_score nằm trong khoảng [0, 1]
-                risk_score = max(0.0, min(1.0, float(risk_score)))
-
-            except Exception as e:
-                log_message(logger, "error", f"Lỗi trong quá trình dự đoán: {e}")
-                import traceback
-
-                traceback.print_exc()
-                risk_score = 0.5
-
-        log_message(logger, "info", f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
-        return risk_score

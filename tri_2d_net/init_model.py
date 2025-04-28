@@ -3,7 +3,8 @@ import sys
 sys.path.append("./")
 
 from tri_2d_net.model import Model
-from config import MODEL_CONFIG
+from tri_2d_net.config import CHECKPOINT_PATH
+
 
 def init_model():
     # Initialize model
@@ -16,7 +17,7 @@ def init_model():
         "restore_iter": 0,
         "total_iter": 1000,
         "model_name": "NLST-Tri2DNet",
-        "prt_path": MODEL_CONFIG["CHECKPOINT_PATH"],
+        "prt_path": CHECKPOINT_PATH,
         "accumulate_steps": 2,
         "train_source": None,
         "val_source": None,

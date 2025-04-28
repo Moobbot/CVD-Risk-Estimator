@@ -21,7 +21,8 @@ from dicom_processor import (
     visualize_results,
 )
 
-from model_processor import HeartDetector, Tri2DNetModel
+from cvd_model import Tri2DNetModel
+from heart_detector import HeartDetector
 
 def debug_visualization(ct_volume, output_dir="debug"):
     """

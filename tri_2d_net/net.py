@@ -16,7 +16,8 @@ class AttBranch(nn.Module):
             nn.Conv2d(1, 64, kernel_size=3, dilation=2, padding=2, bias=False),
             *_net_list[1:-14],
             nn.Conv2d(256, 1, kernel_size=1, bias=False),
-            nn.BatchNorm2d(1))
+            nn.BatchNorm2d(1)
+        )
 
         nn.init.constant_(self.backbone2d[-1].weight, 0)
         nn.init.constant_(self.backbone2d[-1].bias, 0)
@@ -34,10 +35,9 @@ class Branch(nn.Module):
         _net_list = list(_net.children())
         self.backbone2d = nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=3, dilation=2, padding=2, bias=False),
-            *_net_list[1:-3])
-        self.aux = nn.Sequential(
-            *_net_list[-3:-1],
-            nn.Flatten())
+            *_net_list[1:-3]
+        )
+        self.aux = nn.Sequential(*_net_list[-3:-1], nn.Flatten())
         self.fc = nn.Linear(512, num_classes)
         self.dout = None
         if dout:
@@ -77,7 +77,7 @@ class Tri2DNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv3d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, nn.BatchNorm3d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -94,7 +94,9 @@ class Tri2DNet(nn.Module):
         aux_pred_sagittal, aux_feature_sagittal = self.branch_sagittal(x_sagittal)
         aux_pred_coronal, aux_feature_coronal = self.branch_coronal(x_coronal)
         aux_pred_axial, aux_feature_axial = self.branch_axial(x_axial)
-        feature = torch.cat([aux_feature_sagittal, aux_feature_coronal, aux_feature_axial], dim=1)
+        feature = torch.cat(
+            [aux_feature_sagittal, aux_feature_coronal, aux_feature_axial], dim=1
+        )
         feature = feature / feature.norm(dim=1, keepdim=True)
         pred = self.fc_fuse(feature)
 
