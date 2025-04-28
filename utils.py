@@ -13,7 +13,7 @@ import pydicom
 from fastapi import UploadFile, HTTPException
 import psutil
 from config import (
-    FILE_RETENTION_DAYS,
+    FILE_RETENTION,
     FOLDERS,
     IS_DEV,
     MAX_FILE_SIZE,
@@ -51,9 +51,14 @@ def get_file_hash(file_path: str) -> str:
     return sha256_hash.hexdigest()
 
 
-def cleanup_old_files(folders: List[str]) -> None:
-    """Clean up old files in specified folders"""
-    cutoff_date = datetime.now() - timedelta(days=FILE_RETENTION_DAYS)
+def cleanup_old_files(folders: List[str], expiry_time=FILE_RETENTION) -> None:
+    """Clean up old files in specified folders.
+
+    Args:
+        folders (List): List of folders to be checked.
+        expiry_time (int): expiry period (hour). The default is 1 hour.
+    """
+    cutoff_date = datetime.now() - timedelta(hours=expiry_time)
 
     for folder in folders:
         if not os.path.exists(folder):
@@ -211,13 +216,12 @@ def get_error_message(error_key: str) -> str:
     return ERROR_MESSAGES.get(error_key, "Unknown error occurred")
 
 
-def save_uploaded_zip(file: UploadFile, session_id: str, folder_save: str = FOLDERS["UPLOAD"]) -> str:
+def save_uploaded_zip(
+    file: UploadFile, session_id: str, folder_save: str = FOLDERS["UPLOAD"]
+) -> str:
     """Lưu file ZIP tải lên"""
     try:
-        # Create timestamp-based filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{file.filename}"
-        zip_path = os.path.join(folder_save, filename)
+        zip_path = os.path.join(folder_save, session_id)
 
         # Save file
         with open(zip_path, "wb") as buffer:
@@ -228,7 +232,7 @@ def save_uploaded_zip(file: UploadFile, session_id: str, folder_save: str = FOLD
 
         # Save metadata
         metadata = {
-            "filename": filename,
+            "session_id": session_id,
             "original_name": file.filename,
             "size": file.size,
             "content_type": file.content_type,
@@ -247,7 +251,9 @@ def save_uploaded_zip(file: UploadFile, session_id: str, folder_save: str = FOLD
         raise HTTPException(status_code=500, detail=ERROR_MESSAGES["processing_error"])
 
 
-def extract_zip_file(zip_path: str, session_id: str, folder_save: str = FOLDERS["UPLOAD"]) -> tuple:
+def extract_zip_file(
+    zip_path: str, session_id: str, folder_save: str = FOLDERS["UPLOAD"]
+) -> tuple:
     """Giải nén ZIP, kiểm tra thư mục con"""
     unzip_path = os.path.join(folder_save, session_id)
     os.makedirs(unzip_path, exist_ok=True)
@@ -259,10 +265,13 @@ def extract_zip_file(zip_path: str, session_id: str, folder_save: str = FOLDERS[
     except zipfile.BadZipFile:
         os.remove(zip_path)
         logger.error(f"Invalid ZIP file: {zip_path}")
-        return None, JSONResponse(
-            content={"error": ERROR_MESSAGES["invalid_file"]},
-            status_code=400
-        ), 400
+        return (
+            None,
+            JSONResponse(
+                content={"error": ERROR_MESSAGES["invalid_file"]}, status_code=400
+            ),
+            400,
+        )
 
     os.remove(zip_path)
 
@@ -287,13 +296,13 @@ def get_valid_files(unzip_path: str) -> List[str]:
                     file_path = os.path.join(root, filename)
                     valid_files.append(file_path)
                     logger.info(f"Found valid file: {file_path}")
-        
+
         if not valid_files:
             logger.warning(f"No valid files found in: {unzip_path}")
     except Exception as e:
         logger.error(f"Error getting valid files from {unzip_path}: {str(e)}")
         raise HTTPException(status_code=500, detail=ERROR_MESSAGES["processing_error"])
-    
+
     return valid_files
 
 

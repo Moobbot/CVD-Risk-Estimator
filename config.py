@@ -35,7 +35,8 @@ for folder in FOLDERS.values():
 # File Configuration
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", 100 * 1024 * 1024))  # 100MB
 ALLOWED_EXTENSIONS = {".dcm"}
-FILE_RETENTION_DAYS = int(os.getenv("FILE_RETENTION_DAYS", 1))
+FILE_RETENTION = int(os.getenv("FILE_RETENTION", 1))  # 1 hour
+
 
 # Model Configuration
 MODEL_CONFIG = {
