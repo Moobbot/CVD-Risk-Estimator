@@ -19,10 +19,13 @@ from dicom_processor import (
     preprocess_heart_ct,
     generate_report,
     visualize_results,
+    save_heart_detection_images,
+    save_grad_cam_visualization,
 )
 
 from cvd_model import Tri2DNetModel
 from heart_detector import HeartDetector
+from config import FOLDERS
 
 def debug_visualization(ct_volume, output_dir="debug"):
     """
@@ -54,13 +57,17 @@ def main(dicom_dir, visualize=True, detection_method="auto", debug=False):
         Nếu True, hiển thị thông tin debug
     """
     try:
+        # Tạo thư mục kết quả
+        result_dir = os.path.join(FOLDERS["RESULTS"], os.path.basename(dicom_dir))
+        os.makedirs(result_dir, exist_ok=True)
+
         # 1. Đọc ảnh DICOM
         ct_volume, metadata = load_dicom_series(dicom_dir)
         log_message(logger, "info", f"Đã đọc CT volume với kích thước {ct_volume.shape}")
 
         # Debug logging
         if debug:
-            debug_visualization(ct_volume)
+            debug_visualization(ct_volume, os.path.join(result_dir, "debug"))
             log_message(logger, "debug", f"CT volume shape: {ct_volume.shape}")
             log_message(logger, "debug", f"CT value range: {np.min(ct_volume)}, {np.max(ct_volume)}")
 
@@ -68,6 +75,9 @@ def main(dicom_dir, visualize=True, detection_method="auto", debug=False):
         heart_detector = HeartDetector()
         heart_region = heart_detector.detect_heart_region(ct_volume)
         log_message(logger, "info", f"Đã phát hiện vùng tim: {heart_region}")
+
+        # Lưu ảnh phát hiện tim
+        save_heart_detection_images(ct_volume, heart_region, os.path.join(result_dir, "heart_detection"))
 
         # 3. Tiền xử lý ảnh tim
         processed_ct = preprocess_heart_ct(ct_volume, heart_region)
@@ -77,6 +87,9 @@ def main(dicom_dir, visualize=True, detection_method="auto", debug=False):
         model = Tri2DNetModel()
         risk_score = model.predict_risk(processed_ct)
         log_message(logger, "info", f"Điểm nguy cơ CVD: {risk_score:.5f}")
+
+        # Lưu ảnh Grad-CAM
+        save_grad_cam_visualization(model, ct_volume, heart_region, os.path.join(result_dir, "grad_cam"))
 
         # 5. Tạo báo cáo
         report = generate_report(metadata, risk_score)

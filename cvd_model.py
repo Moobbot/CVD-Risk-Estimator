@@ -145,3 +145,10 @@ class Tri2DNetModel:
 
         log_message(logger, "info", f"Điểm nguy cơ CVD đã dự đoán: {risk_score:.5f}")
         return risk_score
+
+    def grad_cam_visual(self, volumes, show=False):
+        """
+        Hiển thị hoặc lưu ảnh Grad-CAM từ volumes (numpy hoặc torch).
+        Nếu show=True sẽ hiển thị ảnh, show=False chỉ vẽ lên figure (dùng để lưu file).
+        """
+        return self.model.grad_cam_visual(volumes, show=show)

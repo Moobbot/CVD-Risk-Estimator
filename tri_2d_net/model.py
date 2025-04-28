@@ -270,7 +270,7 @@ class Model:
 
         return pred_prob
 
-    def grad_cam_visual(self, volumes):
+    def grad_cam_visual(self, volumes, show=True):
         if isinstance(volumes, np.ndarray):
             volumes = torch.from_numpy(volumes)
         self.encoder.eval()
@@ -285,7 +285,8 @@ class Model:
         plt.imshow(color_sample)
         plt.yticks(np.arange(0))
         plt.xticks(np.arange(-1, 128, 32), [0, 0.25, 0.5, 0.75, 1.0])
-        plt.show()
+        if show:
+            plt.show()
 
         def show_cam_on_image(img, mask):
             img = np.float32(img) / 255
@@ -304,7 +305,7 @@ class Model:
             cam = imresize(cam, (128, 128, 128))
             return cam
 
-        volumes = volumes.unsqueeze(0)
+        # volumes = volumes.unsqueeze(0)
         grad_cam.model.zero_grad()
         pred = grad_cam(volumes.cuda())
         one_hot = torch.zeros(pred.size())
@@ -351,7 +352,8 @@ class Model:
             coupled = np.concatenate([org_img, merged], axis=1)
             coupled = cv2.cvtColor(coupled, cv2.COLOR_BGR2RGB)
             grid[i].imshow(coupled)
-        plt.show()
+        if show:
+            plt.show()
 
     def save_model(self):
         torch.save(

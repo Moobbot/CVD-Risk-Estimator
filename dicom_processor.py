@@ -1,25 +1,18 @@
 import os
-import sys
 import glob
 from matplotlib import pyplot as plt
 import numpy as np
 import pydicom
 import torch
-import SimpleITK as sitk
 from scipy.ndimage import zoom
-from torchvision.ops import nms
 import logging
 from datetime import datetime
 
-from config import (
-    FOLDERS,
-    MODEL_CONFIG,
-    ERROR_MESSAGES,
-    LOG_CONFIG,
-    IS_DEV
-)
+from config import ERROR_MESSAGES, IS_DEV
+
 
 logger = logging.getLogger(__name__)
+
 
 def load_dicom_series(dicom_dir):
     """
@@ -95,6 +88,7 @@ def load_dicom_series(dicom_dir):
     logger.info(f"Đã đọc {len(dicom_files)} slices, kích thước: {img_array.shape}")
     return img_array, metadata
 
+
 def preprocess_heart_ct(ct_volume, heart_bbox):
     """
     Tiền xử lý ảnh CT vùng tim để sẵn sàng cho mô hình Tri2D-Net
@@ -148,6 +142,7 @@ def preprocess_heart_ct(ct_volume, heart_bbox):
     logger.info(f"Kích thước đầu vào sau khi chuẩn bị: {heart_ct_3channel.shape}")
 
     return heart_ct_3channel
+
 
 def generate_report(metadata, risk_score):
     """
@@ -208,7 +203,9 @@ def generate_report(metadata, risk_score):
             print(f"Không thể tạo báo cáo: {e}")
         logger.error(f"Không thể tạo báo cáo: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 def visualize_results(ct_volume, heart_bbox, risk_score):
     """
@@ -265,7 +262,9 @@ def visualize_results(ct_volume, heart_bbox, risk_score):
             print(f"Không thể hiển thị kết quả: {e}")
         logger.error(f"Không thể hiển thị kết quả: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 def get_risk_details(risk_score):
     """Phân tích chi tiết mức độ nguy cơ CVD"""
@@ -288,6 +287,7 @@ def get_risk_details(risk_score):
 
     return details
 
+
 def get_risk_level(risk_score):
     """Chuyển đổi điểm nguy cơ thành mức độ nguy cơ"""
     if risk_score < 0.2:
@@ -295,4 +295,94 @@ def get_risk_level(risk_score):
     elif risk_score < 0.5:
         return "Trung bình"
     else:
-        return "Cao" 
+        return "Cao"
+
+
+def save_heart_detection_images(ct_volume, heart_bbox, output_dir):
+    """
+    Lưu các ảnh phát hiện tim vào thư mục kết quả
+
+    Parameters:
+    -----------
+    ct_volume: numpy.ndarray
+        Mảng 3D chứa dữ liệu ảnh CT
+    heart_bbox: tuple
+        Tọa độ (x_min, y_min, z_min, x_max, y_max, z_max) của vùng tim
+    output_dir: str
+        Thư mục để lưu kết quả
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Lấy các slice ở giữa vùng tim
+    z_min, z_max = heart_bbox[2], heart_bbox[5]
+    z_center = (z_min + z_max) // 2
+
+    # Lưu các slice cách nhau 10 đơn vị
+    for i, z_pos in enumerate(range(z_center - 20, z_center + 21, 10)):
+        if 0 <= z_pos < ct_volume.shape[0]:
+            plt.figure(figsize=(10, 10))
+            plt.imshow(ct_volume[z_pos], cmap="gray")
+
+            # Vẽ bounding box
+            x_min, y_min, x_max, y_max = (
+                heart_bbox[0],
+                heart_bbox[1],
+                heart_bbox[3],
+                heart_bbox[4],
+            )
+            plt.gca().add_patch(
+                plt.Rectangle(
+                    (x_min, y_min),
+                    x_max - x_min,
+                    y_max - y_min,
+                    fill=False,
+                    edgecolor="red",
+                    linewidth=2,
+                )
+            )
+
+            plt.title(f"Slice {z_pos}")
+            plt.axis("off")
+            plt.savefig(
+                os.path.join(output_dir, f"heart_detection_slice_{z_pos}.png"),
+                bbox_inches="tight",
+                dpi=300,
+            )
+            plt.close()
+
+
+def save_grad_cam_visualization(model, ct_volume, heart_bbox, output_dir):
+    """
+    Lưu ảnh Grad-CAM vào thư mục kết quả, không hiển thị ảnh.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")  # Không dùng giao diện hiển thị
+    import matplotlib.pyplot as plt
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Lấy ảnh tim đã chuẩn hóa, resize, 3 kênh
+    heart_ct_3channel = preprocess_heart_ct(ct_volume, heart_bbox)  # (3, 128, 128, 128)
+    if heart_ct_3channel.shape != (3, 128, 128, 128):
+        raise ValueError(
+            f"Heart CT shape phải là (3,128,128,128), hiện tại: {heart_ct_3channel.shape}"
+        )
+
+    # Thêm batch dimension
+    heart_tensor = (
+        torch.from_numpy(heart_ct_3channel).float().unsqueeze(0)
+    )  # (1, 3, 128, 128, 128)
+
+    plt.ioff()  # Không hiển thị ảnh
+
+    # Gọi hàm grad_cam_visual (hàm này sẽ tự vẽ và lưu figure hiện tại)
+    model.model.grad_cam_visual(heart_tensor)
+
+    # Lưu ảnh Grad-CAM
+    plt.savefig(
+        os.path.join(output_dir, "grad_cam_visualization.png"),
+        bbox_inches="tight",
+        dpi=300,
+    )
+    plt.close("all")
