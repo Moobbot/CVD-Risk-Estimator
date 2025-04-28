@@ -1,0 +1,28 @@
+# Core dependencies
+numpy>=1.19.0
+opencv-python>=4.5.0
+matplotlib>=3.3.0
+scipy>=1.5.0
+scikit-image>=0.17.2
+requests>=2.25.0
+tqdm>=4.50.0
+pillow>=8.0.0
+pandas>=1.1.0
+SimpleITK>=2.3.1
+pydicom>=2.4.3
+pytorch-retinanet
+psutil
+
+# API dependencies
+flask
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+python-jose==3.3.0
+passlib==1.7.4
+python-dotenv==1.0.0
+# Note: PyTorch and torchvision are installed via setup.py
+
+# Security
+ipaddress==1.0.23
+bcrypt==4.0.1
