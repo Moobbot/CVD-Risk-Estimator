@@ -1,90 +1,161 @@
-# Tri2D-Net for CVD Risk Estimation
+# CVD Risk Prediction API
 
-[![DOI](https://zenodo.org/badge/256093026.svg)](https://zenodo.org/badge/latestdoi/256093026)
+API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net model.
 
-Tri2D-Net is the **first** deep learning network trained for directly estimating **overall** cardiovascular disease (CVD) risks on low dose computed tomography (LDCT). The corresponding [paper](https://www.nature.com/articles/s41467-021-23235-4) has been published on Nature Communications.
+## Features
 
-## Prerequisites
+- Upload and process DICOM images
+- Detect heart region using RetinaNet or simple method
+- Predict CVD risk using Tri2D-Net model
+- Generate detailed reports and visualizations
+- Debug mode for detailed analysis
 
-- Python 3.10
-- PyTorch 2.5.1
-- Computing device with GPU
+## Installation
 
-## Getting starte
-
-### Installation
-
-- (Optional) Install [Anaconda3](https://www.anaconda.com/download/) for managing Python and packages
-- Install [CUDA 12.3](https://developer.nvidia.com/cuda-12-3-0-download-archive)
-- Install [PyTorch](http://pytorch.org/)
-
-Noted that our code is tested based on [PyTorch 2.5](https://pytorch.org/get-started/previous-versions/)
-
-### Data
-
-#### Availability
-
-This model was trained on the [National Lung Screening Trial (NLST)](https://biometry.nci.nih.gov/cdas/learn/nlst/images/) dataset. The NLST is made publicly available by the National Cancer Institute. The detailed data information and the split of the NLST dataset used in the paper is contained in [NLST_data_split.csv](./old_code/NLST_data_split.csv).
-
-#### Preprocess
-
-- **Heart Detection**: [RetinaNet](https://github.com/yhenon/pytorch-retinanet) was used in our study for heart detection.
-- **Resize & Normalization**: The detected heart region was resized into 128x128x128. The image was normalized with a range of -300HU~500HU.
-
-### Get Trained Model
-
-**BEFORE RUNNING THE CODE, PLEASE DOWNLOAD THE NETWORK CHECKPOINT FIRST.**
-
-The trained model can be downloaded through [this link](https://1drv.ms/u/s!AurT2TsSKdxQvz1aHvmxTlkDNkTz?e=8rCnJl). Please download the checkpoint to the `./checkpoint` folder.
-
-### CVD Risk Prediction
-
-To predict CVD Risk from an image, run:
+1. Clone the repository:
 
 ```bash
-python pred.py
+git clone https://github.com/yourusername/cvd-risk-prediction.git
+cd cvd-risk-prediction
 ```
 
-- `--path` path of the input image. #Default: `./demos/Positive_CAC_1.npy`
-- `--iter` iteration of the checkpoint to load. #Default: 8000
+1. Install dependencies:
 
-#### Input
+```bash
+pip install -r requirements.txt
+```
 
-The model takes a normalized 128x128x128 `numpy.ndarray` as an input, i.e., each item in the `ndarray` ranges 0~1.
+1. Run the API:
 
-#### Output
+```bash
+python api.py
+```
 
-A real number in \[0, 1\] indicates the estimated CVD risk.
+The API will be available at `http://localhost:8000`
 
-#### Demo
+## API Endpoints
 
-We uploaded 4 demos in the `./demo` folder, including one CVD negative case and three CVD positive case. One of the CVD positive subjects died because of CVD in the trial.
+### POST /predict
 
-The name of the file indicates its label and the CAC grade evaluated by our radiologists.
+Predict CVD risk from DICOM images.
 
-## Citation
+**Parameters:**
 
-Please cite these papers in your publications if the code helps your research:
+- `files`: List of DICOM files (multipart/form-data)
+- `detection_method`: Method for heart detection ("auto", "model", "simple")
+- `visualize`: Whether to generate visualization (boolean)
+- `debug`: Whether to enable debug mode (boolean)
 
-```cc
-@Article{chao2021deep,
-  author  = {Chao, Hanqing and Shan, Hongming and Homayounieh, Fatemeh and Singh, Ramandeep and Khera, Ruhani Doda and Guo, Hengtao and Su, Timothy and Wang, Ge and Kalra, Mannudeep K. and Yan, Pingkun},
-  title   = {Deep learning predicts cardiovascular disease risks from lung cancer screening low dose computed tomography},
-  journal = {Nature Communications},
-  year    = {2021},
-  volume  = {12},
-  number  = {1},
-  pages   = {2963},
-  url     = {https://doi.org/10.1038/s41467-021-23235-4},
+**Response:**
+
+```json
+{
+    "risk_score": 0.75,
+    "risk_details": {
+        "risk_level": "High",
+        "risk_percentage": "75.00%",
+        "recommendations": [
+            "Consult a cardiologist",
+            "Monitor cardiovascular risk factors"
+        ]
+    },
+    "metadata": {
+        "PatientID": "12345",
+        "StudyDate": "2023-01-01"
+    },
+    "report_path": "reports/cvd_risk_report_20230101_120000.txt",
+    "visualization_path": "visualizations/cvd_risk_result_20230101_120000.png",
+    "timestamp": "2023-01-01T12:00:00"
 }
 ```
 
-Link to paper:
+### GET /health
 
-- [Deep Learning Predicts Cardiovascular Disease Risks from Lung Cancer Screening Low Dose Computed Tomography](https://www.nature.com/articles/s41467-021-23235-4)
+Health check endpoint.
+
+**Response:**
+
+```json
+{
+    "status": "healthy",
+    "timestamp": "2023-01-01T12:00:00"
+}
+```
+
+## Usage Examples
+
+### Using curl
+
+```bash
+curl -X POST "http://localhost:8000/predict" \
+     -H "accept: application/json" \
+     -H "Content-Type: multipart/form-data" \
+     -F "files=@path/to/dicom1.dcm" \
+     -F "files=@path/to/dicom2.dcm" \
+     -F "detection_method=auto" \
+     -F "visualize=true" \
+     -F "debug=false"
+```
+
+### Using Python requests
+
+```python
+import requests
+
+url = "http://localhost:8000/predict"
+files = [
+    ("files", ("dicom1.dcm", open("path/to/dicom1.dcm", "rb"))),
+    ("files", ("dicom2.dcm", open("path/to/dicom2.dcm", "rb")))
+]
+data = {
+    "detection_method": "auto",
+    "visualize": "true",
+    "debug": "false"
+}
+
+response = requests.post(url, files=files, data=data)
+print(response.json())
+```
+
+## Directory Structure
+
+```
+cvd-risk-prediction/
+├── api.py                 # FastAPI implementation
+├── dicom_detect.py        # Core DICOM processing and prediction
+├── tri_2d_net/           # Tri2D-Net model implementation
+├── requirements.txt       # Project dependencies
+├── README.md             # This file
+├── reports/              # Generated reports
+├── visualizations/       # Generated visualizations
+└── debug/               # Debug information
+```
+
+## Error Handling
+
+The API returns appropriate HTTP status codes and error messages:
+
+- 200: Success
+- 400: Bad Request
+- 500: Internal Server Error
+
+## Logging
+
+Logs are stored in `cvd_api.log` with the following format:
+
+```
+2023-01-01 12:00:00,000 - INFO - Processing request
+2023-01-01 12:00:01,000 - ERROR - Error in prediction: Invalid DICOM file
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-The source code of Tri2D-Net is licensed under a MIT-style license, as found in the [LICENSE](LICENSE) file.
-This code is only freely available for non-commercial use, and may be redistributed under these conditions.
-For commercial queries, please contact [Dr. Pingkun Yan](https://dial.rpi.edu/people/pingkun-yan).
+This project is licensed under the MIT License - see the LICENSE file for details.

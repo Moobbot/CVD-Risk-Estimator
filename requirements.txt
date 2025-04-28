@@ -22,3 +22,7 @@ python-jose==3.3.0
 passlib==1.7.4
 python-dotenv==1.0.0
 # Note: PyTorch and torchvision are installed via setup.py
+
+# Security
+ipaddress==1.0.23
+bcrypt==4.0.1

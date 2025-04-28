@@ -2,10 +2,10 @@ import os
 import sys
 import torch
 import numpy as np
-from config import FOLDERS, MODEL_CONFIG, ERROR_MESSAGES
+from config import FOLDERS_DETECTOR, MODEL_CONFIG, ERROR_MESSAGES
 
 # Thêm đường dẫn đến thư mục detector từ config
-sys.path.append(FOLDERS["DETECTOR"])
+sys.path.append(FOLDERS_DETECTOR)
 
 from logger import logger, log_message
 
@@ -39,7 +39,7 @@ class HeartDetector:
 
         try:
             # Tải mô hình RetinaNet
-            model_file = os.path.join(model_path, "retinanet_heart.pt")
+            model_file = os.path.join(model_path)
             if os.path.exists(model_file):
                 log_message(logger, "info", f"Đang tải mô hình từ {model_file}...")
                 # Thêm weights_only=True để tránh warning
@@ -51,7 +51,7 @@ class HeartDetector:
                     logger, "warning", f"Không tìm thấy file mô hình tại: {model_file}"
                 )
                 # Thử tìm mô hình trong thư mục detector từ config
-                alt_model_file = os.path.join(FOLDERS["DETECTOR"], "retinanet_heart.pt")
+                alt_model_file = os.path.join(MODEL_CONFIG["RETINANET_PATH"])
                 if os.path.exists(alt_model_file):
                     log_message(
                         logger,
