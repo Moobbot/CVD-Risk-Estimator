@@ -63,13 +63,12 @@ class Image:
         self.detected_ct_img = crop_w_bbox(
             self.org_ct_img, self.bbox, self.bbox_selected)
         if self.detected_ct_img is None:
-            print('Fail to detect heart in the image. '
-                  'Please manually crop the heart region.')
-            return
+            return False
         self.detected_dicom_names = [v for f, v in zip(
             self.bbox_selected, self.dicom_names) if f == 1]
         self.detected_npy = sitk.GetArrayFromImage(self.detected_ct_img)
         self.detected_npy = norm(self.detected_npy, -300, 500)
+        return True
 
     def save_visual_bbox(self, output_folder):
         os.makedirs(output_folder, exist_ok=True)
@@ -85,6 +84,4 @@ class Image:
             + (data > 0.5375).astype('float'), 0, 1)
         mask = gaussian_filter(mask, sigma=3)
         network_input = np.stack([data, data * mask]).astype('float32')
-        dicom_names = [v for f, v in zip(
-            self.bbox_selected, self.dicom_names) if f == 1]
-        return network_input, dicom_names
+        return network_input

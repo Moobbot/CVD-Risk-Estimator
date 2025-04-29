@@ -264,7 +264,7 @@ class Model:
 
         return pred_prob
 
-    def grad_cam_visual(self, volumes, output_folder, filenames=None):
+    def grad_cam_visual(self, volumes, output_folder):
         if isinstance(volumes, np.ndarray):
             volumes = torch.from_numpy(volumes)
         self.encoder.eval()
@@ -335,8 +335,7 @@ class Model:
             merged = show_cam_on_image(org_img, cam_combine[frame_dix])
             merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
             output_path = os.path.join(
-                output_folder, f"slice_{frame_dix}.png") if filenames is None else os.path.join(
-                output_folder, f"{frame_dix}_{filenames[frame_dix]}.png")
+                output_folder, f"slice_{frame_dix}.png") # Không gắn tên file được :v Ảnh đây là nội suy ra vào không gian (128, 128, 128)
             plt.imsave(output_path, merged)
 
     def save_model(self):

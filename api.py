@@ -20,13 +20,12 @@ app = FastAPI(title="DICOM to NIFTI Prediction API")
 
 # Cấu hình thư mục lưu trữ
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 DICOM_DIR = os.path.join(BASE_DIR, "dicom_files")
 RESULT_DIR = os.path.join(BASE_DIR, "results")
 ITER = 700  # Số lần lặp lại của mô hình (Checkpoint)
 
 # Đảm bảo các thư mục tồn tại
-for directory in [UPLOAD_DIR, DICOM_DIR, RESULT_DIR]:
+for directory in [DICOM_DIR, RESULT_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 
@@ -57,50 +56,55 @@ async def predict_from_dicom_zip(file: UploadFile = File(...)) -> Dict[str, Any]
         raise HTTPException(
             status_code=400, detail="File phải có định dạng ZIP")
 
-    # try:
-    # Tạo UUID duy nhất cho mỗi request
-    process_id = str(uuid.uuid4())
-    logger.info(f"Xử lý yêu cầu với ID: {process_id}")
+    try:
+        # Tạo UUID duy nhất cho mỗi request
+        process_id = str(uuid.uuid4())
+        logger.info(f"Xử lý yêu cầu với ID: {process_id}")
 
-    # Tạo thư mục cho UUID này
-    dicom_uuid_dir = os.path.join(DICOM_DIR, process_id)
-    result_uuid_dir = os.path.join(RESULT_DIR, process_id)
-    os.makedirs(dicom_uuid_dir, exist_ok=True)
-    os.makedirs(result_uuid_dir, exist_ok=True)
+        # Tạo thư mục cho UUID này
+        dicom_uuid_dir = os.path.join(DICOM_DIR, process_id)
+        result_uuid_dir = os.path.join(RESULT_DIR, process_id)
+        os.makedirs(dicom_uuid_dir, exist_ok=True)
+        os.makedirs(result_uuid_dir, exist_ok=True)
 
-    # Đường dẫn lưu file ZIP tạm thời
-    zip_path = os.path.join(UPLOAD_DIR, f"{process_id}.zip")
+        # Đường dẫn lưu file ZIP tạm thời
+        zip_path = os.path.join(DICOM_DIR, file.filename)
 
-    # Lưu file ZIP
-    with open(zip_path, "wb") as temp_zip:
-        content = await file.read()
-        temp_zip.write(content)
+        # Lưu file ZIP
+        with open(zip_path, "wb") as temp_zip:
+            content = await file.read()
+            temp_zip.write(content)
 
-    # Giải nén file ZIP vào thư mục DICOM theo UUID
-    logger.info(f"Giải nén file {file.filename} vào {dicom_uuid_dir}")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(dicom_uuid_dir)
+        # Giải nén file ZIP vào thư mục DICOM theo UUID
+        logger.info(f"Giải nén file {file.filename} vào {dicom_uuid_dir}")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(dicom_uuid_dir)
 
-    img = Image(dicom_uuid_dir, heart_detector)
-    img.detect_heart()
-    img.save_visual_bbox(os.path.join(result_uuid_dir, "visual_bbox"))
-    network_input, dicom_names = img.to_network_input()
-    score = model.aug_transform(network_input)[1].item()
-    model.grad_cam_visual(network_input, os.path.join(result_uuid_dir, "grad_cam"), dicom_names)
+        os.remove(zip_path)
 
-    # Thêm thông tin về các file đã tạo vào kết quả
-    result = {
-        "score": score,
-    }
+        img = Image(dicom_uuid_dir, heart_detector)
+        logger.info("Đang phát hiện tim...")
+        if not img.detect_heart():
+            raise HTTPException(
+                status_code=422, detail=f"Không thể phát hiện tim")
+        img.save_visual_bbox(os.path.join(result_uuid_dir, "visual_bbox"))
+        network_input = img.to_network_input()
+        logger.info("Đang ước lượng rủi ro tim mạch...")
+        score = model.aug_transform(network_input)[1].item()
+        model.grad_cam_visual(network_input, os.path.join(
+            result_uuid_dir, "grad_cam"))
 
-    # Tùy chọn: Xóa file ZIP sau khi xử lý
-    # os.remove(zip_path)
+        # Thêm thông tin về các file đã tạo vào kết quả
+        result = {
+            "score": score,
+        }
 
-    return result
-
-    # except Exception as e:
-    #     logger.error(f"Lỗi xử lý: {str(e)}")
-    #     raise HTTPException(status_code=500, detail=f"Lỗi xử lý: {str(e)}")
+        return result
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Lỗi xử lý: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý: {str(e)}")
 
 
 if __name__ == "__main__":
