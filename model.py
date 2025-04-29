@@ -2,7 +2,7 @@
 # @Author  : chq_N
 # @Time    : 2020/8/29
 
-import os.path as osp
+import os
 import sys
 from datetime import datetime
 
@@ -122,10 +122,14 @@ class Model:
 
             labels = (labels > 0).int()
             main_ce_loss = self.ce(pred, labels.cuda().long()).mean()
-            sagittal_ce_loss = self.ce(aux_pred_sagittal, labels.cuda().long()).mean()
-            axial_ce_loss = self.ce(aux_pred_axial, labels.cuda().long()).mean()
-            coronal_ce_loss = self.ce(aux_pred_coronal, labels.cuda().long()).mean()
-            total_loss = (main_ce_loss + sagittal_ce_loss + axial_ce_loss + coronal_ce_loss) / 4
+            sagittal_ce_loss = self.ce(
+                aux_pred_sagittal, labels.cuda().long()).mean()
+            axial_ce_loss = self.ce(
+                aux_pred_axial, labels.cuda().long()).mean()
+            coronal_ce_loss = self.ce(
+                aux_pred_coronal, labels.cuda().long()).mean()
+            total_loss = (main_ce_loss + sagittal_ce_loss +
+                          axial_ce_loss + coronal_ce_loss) / 4
             _total_loss = total_loss.cpu().data.numpy()
             self.loss.append(_total_loss)
             self.m_loss.append(main_ce_loss.cpu().data.numpy())
@@ -150,11 +154,15 @@ class Model:
                 print('iter {}:'.format(self.restore_iter), end='')
                 print(', loss={0:.8f}'.format(np.mean(self.loss)), end='')
                 print(', m_loss={0:.8f}'.format(np.mean(self.m_loss)), end='')
-                print(', sa_loss={0:.8f}'.format(np.mean(self.sa_loss)), end='')
-                print(', co_loss={0:.8f}'.format(np.mean(self.co_loss)), end='')
-                print(', ax_loss={0:.8f}'.format(np.mean(self.ax_loss)), end='')
+                print(', sa_loss={0:.8f}'.format(
+                    np.mean(self.sa_loss)), end='')
+                print(', co_loss={0:.8f}'.format(
+                    np.mean(self.co_loss)), end='')
+                print(', ax_loss={0:.8f}'.format(
+                    np.mean(self.ax_loss)), end='')
                 print(', lr=', end='')
-                print([self.optimizer.param_groups[i]['lr'] for i in range(len(self.optimizer.param_groups))])
+                print([self.optimizer.param_groups[i]['lr']
+                      for i in range(len(self.optimizer.param_groups))])
                 sys.stdout.flush()
 
                 self.LOSS.append(np.mean(self.loss))
@@ -212,7 +220,8 @@ class Model:
                 (pred, aux_pred_sagittal, aux_pred_coronal,
                  aux_pred_axial) = self.encoder(_v)
                 pred = pred.view(len(crop), b_s, 2)
-                pred_prob = softmax(pred.data.cpu().numpy(), axis=2).mean(axis=0)
+                pred_prob = softmax(pred.data.cpu().numpy(),
+                                    axis=2).mean(axis=0)
                 pred_list.append(pred_prob)
                 label_list.append(labels.numpy())
 
@@ -255,22 +264,22 @@ class Model:
 
         return pred_prob
 
-    def grad_cam_visual(self, volumes):
+    def grad_cam_visual(self, volumes, output_folder, filenames=None):
         if isinstance(volumes, np.ndarray):
             volumes = torch.from_numpy(volumes)
         self.encoder.eval()
         grad_cam = GradCam(self.encoder)
 
         color = cv2.COLORMAP_JET
-        color_sample = np.asarray(list(range(0, 10)) * 3).reshape(3, 10)
-        color_sample = imresize(color_sample.astype('float'), (12, 128))
-        color_sample = color_sample / 10
-        color_sample = cv2.applyColorMap(np.uint8(255 * color_sample), color)
-        color_sample = cv2.cvtColor(color_sample,cv2.COLOR_BGR2RGB)
-        plt.imshow(color_sample)
-        plt.yticks(np.arange(0))
-        plt.xticks(np.arange(-1, 128, 32), [0, 0.25, 0.5, 0.75, 1.0])
-        plt.show()
+        # color_sample = np.asarray(list(range(0, 10)) * 3).reshape(3, 10)
+        # color_sample = imresize(color_sample.astype('float'), (12, 128))
+        # color_sample = color_sample / 10
+        # color_sample = cv2.applyColorMap(np.uint8(255 * color_sample), color)
+        # color_sample = cv2.cvtColor(color_sample, cv2.COLOR_BGR2RGB)
+        # plt.imshow(color_sample)
+        # plt.yticks(np.arange(0))
+        # plt.xticks(np.arange(-1, 128, 32), [0, 0.25, 0.5, 0.75, 1.0])
+        # plt.show()
 
         def show_cam_on_image(img, mask):
             img = np.float32(img) / 255
@@ -314,39 +323,40 @@ class Model:
         sagittal_cam = gaussian_filter(sagittal_cam, sigma=(0, 0, 3))
 
         cam_combine = axial_cam + coronal_cam + sagittal_cam
-        cam_combine = (cam_combine - cam_combine.min()) / (cam_combine.max() - cam_combine.min() + 1e-9)
+        cam_combine = (cam_combine - cam_combine.min()) / \
+            (cam_combine.max() - cam_combine.min() + 1e-9)
 
         _v = volumes.data.numpy()[0][0]
         total_img_num = _v.shape[0]
-        fig = plt.figure(figsize=(15, 240))
-        grid = ImageGrid(fig, 111, nrows_ncols=(32, 2), axes_pad=0.05)
-        for i in range(64):
-            frame_dix = i * int(total_img_num / 64)
-            org_img = cv2.cvtColor(np.uint8(255 * _v[frame_dix].reshape(128, 128)), cv2.COLOR_GRAY2BGR)
+        os.makedirs(output_folder, exist_ok=True)
+        for frame_dix in range(total_img_num):
+            org_img = cv2.cvtColor(
+                np.uint8(255 * _v[frame_dix].reshape(128, 128)), cv2.COLOR_GRAY2BGR)
             merged = show_cam_on_image(org_img, cam_combine[frame_dix])
-            coupled = np.concatenate([org_img, merged], axis=1)
-            coupled = cv2.cvtColor(coupled, cv2.COLOR_BGR2RGB)
-            grid[i].imshow(coupled)
-        plt.show()
+            merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
+            output_path = os.path.join(
+                output_folder, f"slice_{frame_dix}.png") if filenames is None else os.path.join(
+                output_folder, f"{frame_dix}_{filenames[frame_dix]}.png")
+            plt.imsave(output_path, merged)
 
     def save_model(self):
-        torch.save(self.encoder.state_dict(), osp.join(
+        torch.save(self.encoder.state_dict(), os.path.join(
             'checkpoint',
             '{}-{:0>5}-encoder.ptm'.format(self.save_name, self.restore_iter)))
-        torch.save(self.optimizer.state_dict(), osp.join(
+        torch.save(self.optimizer.state_dict(), os.path.join(
             'checkpoint',
             '{}-{:0>5}-optimizer.ptm'.format(self.save_name, self.restore_iter)))
 
     def load_model(self, restore_iter=None):
         if restore_iter is None:
             restore_iter = self.restore_iter
-        self.encoder.load_state_dict(torch.load(osp.join(
+        self.encoder.load_state_dict(torch.load(os.path.join(
             'checkpoint',
             '{}-{:0>5}-encoder.ptm'.format(self.save_name, restore_iter))))
-        opt_path = osp.join(
+        opt_path = os.path.join(
             'checkpoint',
             '{}-{:0>5}-optimizer.ptm'.format(self.save_name, restore_iter))
-        if osp.isfile(opt_path):
+        if os.path.isfile(opt_path):
             self.optimizer.load_state_dict(torch.load(opt_path))
 
     def load_pretrain(self):

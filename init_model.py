@@ -2,7 +2,6 @@ from model import Model
 
 def init_model():
     # Initialize model
-    print('Initializing model...')
     model_config = {
         'dout': True,
         'lr': 1e-4,
