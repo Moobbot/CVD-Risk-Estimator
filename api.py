@@ -88,10 +88,6 @@ async def predict_from_dicom_zip(file: UploadFile = File(...)) -> Dict[str, Any]
             raise HTTPException(
                 status_code=422, detail=f"Không thể phát hiện tim")
         
-        # Lưu ảnh với bounding box
-        bbox_folder = os.path.join(result_uuid_dir, "visual_bbox")
-        img.save_visual_bbox(bbox_folder)
-        
         # Chuyển đổi sang đầu vào cho mô hình
         network_input = img.to_network_input()
         logger.info("Đang ước lượng rủi ro tim mạch...")
@@ -99,25 +95,13 @@ async def predict_from_dicom_zip(file: UploadFile = File(...)) -> Dict[str, Any]
         # Dự đoán điểm rủi ro
         score = model.aug_transform(network_input)[1].item()
         
-        # Tạo folder lưu grad cam
-        grad_cam_folder = os.path.join(result_uuid_dir, "grad_cam")
-        os.makedirs(grad_cam_folder, exist_ok=True)
-        
         # Tính toán và lưu Grad-CAM trên vùng 128x128x128
-        cam_data = model.grad_cam_visual(network_input, os.path.join(grad_cam_folder, "resized"))
-        
-        # Lưu Grad-CAM trên ảnh gốc trong vùng tim được phát hiện
-        original_grad_cam_folder = os.path.join(grad_cam_folder, "original")
-        img.save_grad_cam_on_original(cam_data, original_grad_cam_folder)
+        cam_data = model.grad_cam_visual(network_input)
+        img.save_grad_cam_on_original(cam_data, result_uuid_dir)
 
         # Thêm thông tin về các file đã tạo vào kết quả
         result = {
             "score": score,
-            "visualizations": {
-                "bbox": f"results/{process_id}/visual_bbox",
-                "grad_cam_resized": f"results/{process_id}/grad_cam/resized",
-                "grad_cam_original": f"results/{process_id}/grad_cam/original",
-            }
         }
 
         return result

@@ -146,7 +146,7 @@ class Image:
             
             # Save the visualization
             output_path = os.path.join(
-                output_folder, f"original_{orig_idx}_{self.dicom_names[orig_idx]}.png")
+                output_folder, f"{orig_idx}_{self.dicom_names[orig_idx]}.png")
             plt.imsave(output_path, blended)
             
         return True

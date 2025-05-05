@@ -264,7 +264,7 @@ class Model:
 
         return pred_prob
 
-    def grad_cam_visual(self, volumes, output_folder):
+    def grad_cam_visual(self, volumes, output_folder=None):
         if isinstance(volumes, np.ndarray):
             volumes = torch.from_numpy(volumes)
         self.encoder.eval()
@@ -318,17 +318,18 @@ class Model:
             (cam_combine.max() - cam_combine.min() + 1e-9)
 
         # Save visualizations of the processed and resized CAM on the 128x128x128 volume
-        _v = volumes.data.numpy()[0][0]
-        total_img_num = _v.shape[0]
-        os.makedirs(output_folder, exist_ok=True)
-        for frame_dix in range(total_img_num):
-            org_img = cv2.cvtColor(
-                np.uint8(255 * _v[frame_dix].reshape(128, 128)), cv2.COLOR_GRAY2BGR)
-            merged = show_cam_on_image(org_img, cam_combine[frame_dix])
-            merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
-            output_path = os.path.join(
-                output_folder, f"slice_{frame_dix}.png") 
-            plt.imsave(output_path, merged)
+        if output_folder is not None:
+            _v = volumes.data.numpy()[0][0]
+            total_img_num = _v.shape[0]
+            os.makedirs(output_folder, exist_ok=True)
+            for frame_dix in range(total_img_num):
+                org_img = cv2.cvtColor(
+                    np.uint8(255 * _v[frame_dix].reshape(128, 128)), cv2.COLOR_GRAY2BGR)
+                merged = show_cam_on_image(org_img, cam_combine[frame_dix])
+                merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
+                output_path = os.path.join(
+                    output_folder, f"slice_{frame_dix}.png") 
+                plt.imsave(output_path, merged)
             
         # Return the combined CAM data for overlaying on original images
         return cam_combine
