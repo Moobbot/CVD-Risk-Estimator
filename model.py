@@ -271,15 +271,6 @@ class Model:
         grad_cam = GradCam(self.encoder)
 
         color = cv2.COLORMAP_JET
-        # color_sample = np.asarray(list(range(0, 10)) * 3).reshape(3, 10)
-        # color_sample = imresize(color_sample.astype('float'), (12, 128))
-        # color_sample = color_sample / 10
-        # color_sample = cv2.applyColorMap(np.uint8(255 * color_sample), color)
-        # color_sample = cv2.cvtColor(color_sample, cv2.COLOR_BGR2RGB)
-        # plt.imshow(color_sample)
-        # plt.yticks(np.arange(0))
-        # plt.xticks(np.arange(-1, 128, 32), [0, 0.25, 0.5, 0.75, 1.0])
-        # plt.show()
 
         def show_cam_on_image(img, mask):
             img = np.float32(img) / 255
@@ -326,6 +317,7 @@ class Model:
         cam_combine = (cam_combine - cam_combine.min()) / \
             (cam_combine.max() - cam_combine.min() + 1e-9)
 
+        # Save visualizations of the processed and resized CAM on the 128x128x128 volume
         _v = volumes.data.numpy()[0][0]
         total_img_num = _v.shape[0]
         os.makedirs(output_folder, exist_ok=True)
@@ -335,8 +327,11 @@ class Model:
             merged = show_cam_on_image(org_img, cam_combine[frame_dix])
             merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
             output_path = os.path.join(
-                output_folder, f"slice_{frame_dix}.png") # Không gắn tên file được :v Ảnh đây là nội suy ra vào không gian (128, 128, 128)
+                output_folder, f"slice_{frame_dix}.png") 
             plt.imsave(output_path, merged)
+            
+        # Return the combined CAM data for overlaying on original images
+        return cam_combine
 
     def save_model(self):
         torch.save(self.encoder.state_dict(), os.path.join(

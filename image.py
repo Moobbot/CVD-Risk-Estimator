@@ -3,14 +3,16 @@ import os
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
 import numpy as np
+import cv2
 from scipy.ndimage import gaussian_filter
+from skimage.transform import resize as imresize
 
 # from google.colab import auth
 # from google.colab import files
 # from googleapiclient.discovery import build
 # from googleapiclient.http import MediaIoBaseDownload
 
-from bbox_cut import crop_w_bbox
+from bbox_cut import crop_w_bbox, parse_bbox
 from utils import norm, CT_resize
 
 
@@ -26,6 +28,8 @@ class Image:
         self.detected_ct_img = None
         self.detected_npy = None
         self.heart_detector = heart_detector
+        self.min_point = None
+        self.max_point = None
 
     def __load_dicom_series(self, dicom_directory):
         """Load DICOM series from a specified directory"""
@@ -60,6 +64,15 @@ class Image:
         # detect heart
         self.bbox, self.bbox_selected, self.visual_bbox = self.heart_detector.detect(
             self.org_npy)
+        
+        # Save min and max points for mapping back to original image
+        org_space = np.array(self.org_ct_img.GetSpacing())
+        try:
+            self.min_point, self.max_point = parse_bbox(
+                self.bbox, self.bbox_selected, self.org_ct_img.GetSize(), org_space)
+        except Exception:
+            pass
+            
         self.detected_ct_img = crop_w_bbox(
             self.org_ct_img, self.bbox, self.bbox_selected)
         if self.detected_ct_img is None:
@@ -76,6 +89,67 @@ class Image:
             output_path = os.path.join(
                 output_folder, f"{i}_{self.dicom_names[i]}.png")
             plt.imsave(output_path, slice_img)
+
+    def save_grad_cam_on_original(self, cam_data, output_folder):
+        """
+        Save grad-cam visualization overlaid on the original DICOM images
+        
+        Args:
+            cam_data: The grad-cam heatmap array (128x128x128)
+            output_folder: Folder to save the visualizations
+        """
+        if self.min_point is None or self.max_point is None:
+            return False
+            
+        os.makedirs(output_folder, exist_ok=True)
+        
+        # Get the indices of slices that have the heart detected
+        heart_indices = [i for i, val in enumerate(self.bbox_selected) if val == 1]
+        
+        # Color map for heatmap visualization
+        color = cv2.COLORMAP_JET
+        
+        reversed_img = np.flip(self.org_npy, axis=0)
+        
+        for idx, orig_idx in enumerate(heart_indices):
+            if idx >= len(cam_data):
+                break
+                
+            # Get original image
+            orig_img = reversed_img[orig_idx]
+            
+            # Convert to BGR for visualization
+            orig_img_vis = np.tile(np.expand_dims(orig_img, axis=2), (1, 1, 3))
+            orig_img_vis = (orig_img_vis * 255).astype('uint8')
+            
+            # Get the bounding box for this slice
+            x1, y1, x2, y2 = [int(val) for val in self.bbox[orig_idx]]
+            
+            # Extract and resize the corresponding grad-cam slice to match the heart region size
+            cam_slice = cam_data[idx]
+            resized_cam = imresize(cam_slice, (y2-y1, x2-x1))
+            
+            # Apply colormap to create heatmap
+            heatmap = cv2.applyColorMap(np.uint8(255 * resized_cam), color)
+            
+            # Create a blank heatmap of the original image size
+            full_heatmap = np.zeros_like(orig_img_vis)
+            
+            # Place the resized heatmap on the original image location
+            full_heatmap[y1:y2, x1:x2] = heatmap
+            
+            # Blend the heatmap with the original image
+            blended = cv2.addWeighted(orig_img_vis, 0.7, full_heatmap, 0.3, 0)
+            
+            # Convert to RGB for saving with matplotlib
+            blended = cv2.cvtColor(blended, cv2.COLOR_BGR2RGB)
+            
+            # Save the visualization
+            output_path = os.path.join(
+                output_folder, f"original_{orig_idx}_{self.dicom_names[orig_idx]}.png")
+            plt.imsave(output_path, blended)
+            
+        return True
 
     def to_network_input(self):
         data = self.detected_npy
