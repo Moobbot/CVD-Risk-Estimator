@@ -35,11 +35,9 @@ class HeartDetector:
         x1, y1, x2, y2 = bbox
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
         if selected:
-            cv2.rectangle(pic, (x1, y1), (x2, y2),
-                          (0, 255, 0), 2)
+            cv2.rectangle(pic, (x1, y1), (x2, y2), (0, 255, 0), 2)
         else:
-            cv2.rectangle(pic, (x1, y1), (x2, y2),
-                          (0, 0, 255), 1)
+            cv2.rectangle(pic, (x1, y1), (x2, y2), (0, 0, 255), 1)
         return pic
 
     def __calc_iou(self, a, b):

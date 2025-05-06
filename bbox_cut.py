@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# @Author  : chq_N
-# @Time    : 2020/10/28
+# @Author  : Hideyoshi
+# @Time    : 2025/05/04
 
 
 import numpy as np

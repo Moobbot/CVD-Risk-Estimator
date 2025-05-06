@@ -16,31 +16,35 @@ import torch.optim as optim
 import torch.utils.data as tordata
 from mpl_toolkits.axes_grid1 import ImageGrid
 from scipy.ndimage import gaussian_filter
+
 # from apex import amp
 from scipy.special import softmax
 from skimage.transform import resize as imresize
 
-from data import SoftmaxSampler
-from net import Tri2DNet, Branch
-from visualization import GradCam
+sys.path.append("./")
+
+from tri_2d_net.data import SoftmaxSampler
+from tri_2d_net.net import Tri2DNet, Branch
+from tri_2d_net.visualization import GradCam
 
 
 class Model:
     def __init__(
-            self,
-            dout,
-            lr,
-            num_workers,
-            batch_size,
-            restore_iter,
-            total_iter,
-            save_name,
-            model_name,
-            train_source,
-            val_source,
-            test_source,
-            accumulate_steps,
-            prt_path, ):
+        self,
+        dout,
+        lr,
+        num_workers,
+        batch_size,
+        restore_iter,
+        total_iter,
+        save_name,
+        model_name,
+        train_source,
+        val_source,
+        test_source,
+        accumulate_steps,
+        prt_path,
+    ):
 
         self.dout = dout
         self.lr = lr
@@ -57,7 +61,7 @@ class Model:
         self.prt_path = prt_path
 
         encoder = Tri2DNet(dout=self.dout).cuda()
-        ce = nn.CrossEntropyLoss(reduction='none').cuda()
+        ce = nn.CrossEntropyLoss(reduction="none").cuda()
 
         att_id = []
         aux_id = []
@@ -66,19 +70,14 @@ class Model:
                 att_id += list(map(id, m.att_branch.parameters()))
                 aux_id += list(map(id, m.aux.parameters()))
         pretrained_params = filter(
-            lambda p: id(p) not in att_id + aux_id,
-            encoder.parameters())
-        aux_params = filter(
-            lambda p: id(p) in aux_id,
-            encoder.parameters())
-        att_params = filter(
-            lambda p: id(p) in att_id,
-            encoder.parameters())
+            lambda p: id(p) not in att_id + aux_id, encoder.parameters())
+        aux_params = filter(lambda p: id(p) in aux_id, encoder.parameters())
+        att_params = filter(lambda p: id(p) in att_id, encoder.parameters())
         optimizer = optim.Adam([
-            {'params': pretrained_params, 'lr': self.lr / 10},
-            {'params': aux_params, 'lr': self.lr / 5},
-            {'params': att_params, 'lr': self.lr},
-        ], lr=self.lr)
+                {"params": pretrained_params, "lr": self.lr / 10},
+                {"params": aux_params, "lr": self.lr / 5},
+                {"params": att_params, "lr": self.lr},
+            ], lr=self.lr)
 
         models = [encoder, ce]
         # models, optimizer = amp.initialize(models, optimizer, opt_level="O1")
@@ -117,19 +116,14 @@ class Model:
             self.restore_iter += 1
             self.optimizer.zero_grad()
 
-            (pred, aux_pred_sagittal, aux_pred_coronal,
-             aux_pred_axial) = self.encoder(volumes.cuda())
+            (pred, aux_pred_sagittal, aux_pred_coronal, aux_pred_axial) = self.encoder(volumes.cuda())
 
             labels = (labels > 0).int()
             main_ce_loss = self.ce(pred, labels.cuda().long()).mean()
-            sagittal_ce_loss = self.ce(
-                aux_pred_sagittal, labels.cuda().long()).mean()
-            axial_ce_loss = self.ce(
-                aux_pred_axial, labels.cuda().long()).mean()
-            coronal_ce_loss = self.ce(
-                aux_pred_coronal, labels.cuda().long()).mean()
-            total_loss = (main_ce_loss + sagittal_ce_loss +
-                          axial_ce_loss + coronal_ce_loss) / 4
+            sagittal_ce_loss = self.ce(aux_pred_sagittal, labels.cuda().long()).mean()
+            axial_ce_loss = self.ce(aux_pred_axial, labels.cuda().long()).mean()
+            coronal_ce_loss = self.ce(aux_pred_coronal, labels.cuda().long()).mean()
+            total_loss = (main_ce_loss + sagittal_ce_loss + axial_ce_loss + coronal_ce_loss) / 4
             _total_loss = total_loss.cpu().data.numpy()
             self.loss.append(_total_loss)
             self.m_loss.append(main_ce_loss.cpu().data.numpy())
@@ -151,18 +145,15 @@ class Model:
                 print(datetime.now() - _time1)
                 _time1 = datetime.now()
                 self.save_model()
-                print('iter {}:'.format(self.restore_iter), end='')
-                print(', loss={0:.8f}'.format(np.mean(self.loss)), end='')
-                print(', m_loss={0:.8f}'.format(np.mean(self.m_loss)), end='')
-                print(', sa_loss={0:.8f}'.format(
-                    np.mean(self.sa_loss)), end='')
-                print(', co_loss={0:.8f}'.format(
-                    np.mean(self.co_loss)), end='')
-                print(', ax_loss={0:.8f}'.format(
-                    np.mean(self.ax_loss)), end='')
-                print(', lr=', end='')
-                print([self.optimizer.param_groups[i]['lr']
-                      for i in range(len(self.optimizer.param_groups))])
+                print("iter {}:".format(self.restore_iter), end="")
+                print(", loss={0:.8f}".format(np.mean(self.loss)), end="")
+                print(", m_loss={0:.8f}".format(np.mean(self.m_loss)), end="")
+                print(", sa_loss={0:.8f}".format(np.mean(self.sa_loss)), end="")
+                print(", co_loss={0:.8f}".format(np.mean(self.co_loss)), end="")
+                print(", ax_loss={0:.8f}".format(np.mean(self.ax_loss)), end="")
+                print(", lr=", end="")
+                print([self.optimizer.param_groups[i]["lr"]
+                        for i in range(len(self.optimizer.param_groups))])
                 sys.stdout.flush()
 
                 self.LOSS.append(np.mean(self.loss))
@@ -177,13 +168,13 @@ class Model:
                 plt.plot(self.LOSS)
                 plt.show()
 
-    def aug_test(self, subset='test', batch_size=1):
+    def aug_test(self, subset="test", batch_size=1):
         self.encoder.eval()
-        assert subset in ['train', 'val', 'test']
+        assert subset in ["train", "val", "test"]
         source = self.test_source
-        if subset == 'train':
+        if subset == "train":
             source = self.train_source
-        elif subset == 'val':
+        elif subset == "val":
             source = self.val_source
         data_loader = tordata.DataLoader(
             dataset=source,
@@ -215,13 +206,11 @@ class Model:
                     s = _c[0]
                     h = _c[1]
                     w = _c[2]
-                    _v.append(volumes[:, :, s:s + 112, h:h + 112, w:w + 112])
+                    _v.append(volumes[:, :, s : s + 112, h : h + 112, w : w + 112])
                 _v = torch.cat(_v, 0).contiguous()
-                (pred, aux_pred_sagittal, aux_pred_coronal,
-                 aux_pred_axial) = self.encoder(_v)
+                (pred, aux_pred_sagittal, aux_pred_coronal, aux_pred_axial) = self.encoder(_v)
                 pred = pred.view(len(crop), b_s, 2)
-                pred_prob = softmax(pred.data.cpu().numpy(),
-                                    axis=2).mean(axis=0)
+                pred_prob = softmax(pred.data.cpu().numpy(), axis=2).mean(axis=0)
                 pred_list.append(pred_prob)
                 label_list.append(labels.numpy())
 
@@ -255,10 +244,9 @@ class Model:
                 s = _c[0]
                 h = _c[1]
                 w = _c[2]
-                _v.append(volumes[:, :, s:s + 112, h:h + 112, w:w + 112])
+                _v.append(volumes[:, :, s : s + 112, h : h + 112, w : w + 112])
             _v = torch.cat(_v, 0).contiguous()
-            (pred, aux_pred_sagittal, aux_pred_coronal,
-             aux_pred_axial) = self.encoder(_v)
+            (pred, aux_pred_sagittal, aux_pred_coronal, aux_pred_axial) = self.encoder(_v)
             pred = pred.view(len(crop), 2)
             pred_prob = softmax(pred.data.cpu().numpy(), axis=1).mean(axis=0)
 
@@ -298,9 +286,7 @@ class Model:
         y = (one_hot * pred).sum()
         y.backward()
 
-        (axial_output, coronal_output, sagittal_output,
-         axial_grad, coronal_grad, sagittal_grad,
-         ) = grad_cam.get_intermediate_data()
+        (axial_output, coronal_output, sagittal_output, axial_grad, coronal_grad, sagittal_grad) = grad_cam.get_intermediate_data()
         # axial: d, h, w
         axial_cam = v_2D(axial_output, axial_grad[0])
         axial_cam = gaussian_filter(axial_cam, sigma=(3, 0, 0))
@@ -333,24 +319,37 @@ class Model:
             
         # Return the combined CAM data for overlaying on original images
         return cam_combine
-
     def save_model(self):
-        torch.save(self.encoder.state_dict(), os.path.join(
-            'checkpoint',
-            '{}-{:0>5}-encoder.ptm'.format(self.save_name, self.restore_iter)))
-        torch.save(self.optimizer.state_dict(), os.path.join(
-            'checkpoint',
-            '{}-{:0>5}-optimizer.ptm'.format(self.save_name, self.restore_iter)))
+        torch.save(
+            self.encoder.state_dict(),
+            os.path.join(
+                "checkpoint",
+                "{}-{:0>5}-encoder.ptm".format(self.save_name, self.restore_iter),
+            ),
+        )
+        torch.save(
+            self.optimizer.state_dict(),
+            os.path.join(
+                "checkpoint",
+                "{}-{:0>5}-optimizer.ptm".format(self.save_name, self.restore_iter),
+            ),
+        )
 
     def load_model(self, restore_iter=None):
         if restore_iter is None:
             restore_iter = self.restore_iter
-        self.encoder.load_state_dict(torch.load(os.path.join(
-            'checkpoint',
-            '{}-{:0>5}-encoder.ptm'.format(self.save_name, restore_iter))))
+        self.encoder.load_state_dict(
+            torch.load(
+                os.path.join(
+                    "checkpoint",
+                    "{}-{:0>5}-encoder.ptm".format(self.save_name, restore_iter),
+                )
+            )
+        )
         opt_path = os.path.join(
-            'checkpoint',
-            '{}-{:0>5}-optimizer.ptm'.format(self.save_name, restore_iter))
+            "checkpoint",
+            "{}-{:0>5}-optimizer.ptm".format(self.save_name, restore_iter)
+        )
         if os.path.isfile(opt_path):
             self.optimizer.load_state_dict(torch.load(opt_path))
 
