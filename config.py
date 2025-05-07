@@ -88,7 +88,7 @@ CLEANUP_CONFIG = {
         "UPLOAD": "*.dcm",
         "RESULTS": "*.zip",
         "REPORTS": "*.txt",
-        "VISUALIZATIONS": "*.png",
+        "VISUALIZATIONS": "*.dcm", #png
         "DEBUG": "*.json",
     },
 }
@@ -96,7 +96,6 @@ CLEANUP_CONFIG = {
 # Security Configuration
 SECURITY_CONFIG = {
     "ALLOWED_IPS": ["127.0.0.1", "192.168.1.0/24", "10.0.0.0/8"],
-    "SECURITY_HEADERS": {"ENABLED": True, "HSTS_MAX_AGE": 31536000},
     "CORS_ORIGINS": ["*"] if IS_DEV else ["https://example.com"],
     "CORS_METHODS": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     "CORS_HEADERS": ["*"],

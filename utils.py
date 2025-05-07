@@ -2,17 +2,16 @@
 # @Author  : chq_N
 # @Time    : 2020/10/28
 
+import logging
 import os
 import shutil
-import logging
 import uuid
 import hashlib
 import json
 from datetime import datetime, timedelta
 import socket
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import zipfile
-from flask import jsonify
 import pydicom
 from fastapi import UploadFile, HTTPException
 import psutil
@@ -25,6 +24,8 @@ from config import (
     ERROR_MESSAGES,
 )
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 import SimpleITK as sitk
 
