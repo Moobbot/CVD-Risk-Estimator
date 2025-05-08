@@ -5,6 +5,7 @@ import zipfile
 import os
 import subprocess
 import re
+import json
 
 try:
     import requests
@@ -16,6 +17,13 @@ except ModuleNotFoundError as e:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Model download URLs from Dropbox
+# Note: We add 'dl=1' to the end of Dropbox URLs to force direct download
+MODEL_DOWNLOAD_URLS = {
+    "retinanet_heart.pt": "https://www.dropbox.com/scl/fi/awfnv4elf1d9y9ca9kg8c/retinanet_heart.pt?rlkey=6exxr989ww6zs0cvosepw84sb&st=rpkioyoz&dl=1",
+    "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm": "https://www.dropbox.com/scl/fi/egwtns5xrbasg1i6dse19/NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm?rlkey=8csdx2h4dcoxwfo03k59qla94&st=kc1pa3t3&dl=1",
+}
 
 
 def download_file(url, folder, filename):
@@ -53,6 +61,7 @@ def download_file(url, folder, filename):
     except requests.RequestException as e:
         logger.error(f"Error downloading file: {e}")
         return None
+
 
 def download_and_extract_zip(url, extract_path="."):
     """
@@ -274,9 +283,105 @@ def install_packages():
     subprocess.run(["pip", "install", "-r", "requirements.txt"])
 
 
+def download_model_checkpoints():
+    """
+    Download model checkpoints from Dropbox.
+    This function downloads the necessary model files from Dropbox
+    and places them in the correct locations.
+    """
+    logger.info("Checking and downloading model checkpoints from Dropbox...")
+
+    # Create checkpoint directory if it doesn't exist
+    checkpoint_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "checkpoint"
+    )
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
+    # List of model files to download
+    model_files = [
+        "retinanet_heart.pt",
+        "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm",
+    ]
+
+    # Download each model file
+    for model_file in model_files:
+        local_file_path = os.path.join(checkpoint_dir, model_file)
+
+        # Check if file already exists
+        if os.path.exists(local_file_path):
+            logger.info(f"Model file already exists: {local_file_path}")
+            continue
+
+        # Get the download URL from the dictionary
+        if model_file in MODEL_DOWNLOAD_URLS:
+            download_url = MODEL_DOWNLOAD_URLS[model_file]
+            logger.info(f"Downloading model file: {model_file} from Dropbox...")
+
+            try:
+                # Download the file with a session to handle redirects
+                session = requests.Session()
+                response = session.get(download_url, stream=True)
+                response.raise_for_status()
+
+                # Get total file size if available
+                total_size = int(response.headers.get("content-length", 0))
+
+                # Save the file with progress reporting
+                with open(local_file_path, "wb") as f:
+                    if total_size > 0:
+                        downloaded = 0
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                # Print progress every 5%
+                                if downloaded % (total_size // 20) < 8192:
+                                    percent = (downloaded / total_size) * 100
+                                    logger.info(f"Download progress: {percent:.1f}%")
+                    else:
+                        # If content-length is not available
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+
+                logger.info(f"Successfully downloaded model file: {local_file_path}")
+            except Exception as e:
+                logger.error(f"Error downloading model file {model_file}: {e}")
+                logger.info(
+                    f"Please download {model_file} manually from Dropbox and place it in the checkpoint directory."
+                )
+        else:
+            logger.warning(f"No download URL defined for model file: {model_file}")
+            logger.info(
+                f"Please download {model_file} manually from Dropbox and place it in the checkpoint directory."
+            )
+
+    # Check if all model files were downloaded successfully
+    missing_files = []
+    for model_file in model_files:
+        local_file_path = os.path.join(checkpoint_dir, model_file)
+        if not os.path.exists(local_file_path):
+            missing_files.append(model_file)
+
+    if missing_files:
+        logger.warning("Some model files could not be downloaded automatically:")
+        for missing_file in missing_files:
+            logger.warning(f" - {missing_file}")
+        logger.info(
+            "Please download these files manually from Dropbox and place them in the checkpoint directory."
+        )
+    else:
+        logger.info("All model files are available in the checkpoint directory.")
+
+
 def main():
-    print("install_packages")
+    print("Installing packages...")
     install_packages()
+
+    print("Downloading model checkpoints...")
+    download_model_checkpoints()
+
+    print("Setup completed successfully!")
 
 
 if __name__ == "__main__":
