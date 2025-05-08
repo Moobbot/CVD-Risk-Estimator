@@ -3,7 +3,10 @@ import os
 import numpy as np
 import torch
 
-from logger import logger,  log_message
+from logger import setup_logger, log_message
+
+# Set up logger
+logger = setup_logger("heart_detector")
 from config import MODEL_CONFIG
 
 class HeartDetector:
