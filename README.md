@@ -1,83 +1,255 @@
-# Tri2D-Net for CVD Risk Estimation
+# CVD Risk Estimator
 
-[![DOI](https://zenodo.org/badge/256093026.svg)](https://zenodo.org/badge/latestdoi/256093026)
+API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net model.
 
-Tri2D-Net is the **first** deep learning network trained for directly estimating **overall** cardiovascular disease (CVD) risks on low dose computed tomography (LDCT). The corresponding [paper](https://www.nature.com/articles/s41467-021-23235-4) has been published on Nature Communications.
+## Features
 
-## Prerequisites
+- Upload and process DICOM images in ZIP format
+- Detect heart region using RetinaNet or simple method
+- Predict CVD risk using Tri2D-Net model
+- Generate Grad-CAM visualizations for explainability
+- Attention score calculation for important slices
+- Environment variable configuration for easy deployment
+- Unicode support for logging in multiple languages
 
-- Python 3.7
-- PyTorch 1.4
-- Computing device with GPU
+## Installation
 
+1. Clone the repository:
 
-## Getting started
-### Installation
+   ```bash
+   git clone https://github.com/yourusername/CVD-Risk-Estimator.git
+   cd CVD-Risk-Estimator
+   ```
 
-- (Optional) Install [Anaconda3](https://www.anaconda.com/download/) for managing Python and packages
-- Install [CUDA 10.1](https://developer.nvidia.com/cuda-10.1-download-archive-base)
-- Install [PyTorch](http://pytorch.org/)
+2. Create and activate a virtual environment (recommended):
 
-Noted that our code is tested based on [PyTorch 1.4](https://pytorch.org/get-started/previous-versions/)
+   ```bash
+   # Windows
+   python -m venv .venv
+   .venv\Scripts\activate
 
-### Data 
-#### Availability
-This model was trained on the [National Lung Screening Trial (NLST)](https://biometry.nci.nih.gov/cdas/learn/nlst/images/) dataset. The NLST is made publicly available by the National Cancer Institute. The detailed data information and the split of the NLST dataset used in the paper is contained in [NLST_data_split.csv](NLST_data_split.csv).
+   # Linux/macOS
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
 
-#### Preprocess
-- **Heart Detection**: [RetinaNet](https://github.com/yhenon/pytorch-retinanet) was used in our study for heart detection.
-- **Resize & Normalization**: The detected heart region was resized into 128x128x128. The image was normalized with a range of -300HU~500HU.
+3. Install dependencies:
 
-### Get Trained Model
+   ```bash
+   python setup.py
+   ```
 
-**BEFORE RUNNING THE CODE, PLEASE DOWNLOAD THE NETWORK CHECKPOINT FIRST.**
+4. Set up environment variables:
 
-The trained model can be downloaded through [this link](https://1drv.ms/u/s!AurT2TsSKdxQvz1aHvmxTlkDNkTz?e=8rCnJl). Please download the checkpoint to the `./checkpoint` folder.
+   ```bash
+   # Copy the example environment file
+   cp .env.example .env
 
+   # Edit the .env file with your configuration
+   # See Environment Variables section below for details
+   ```
 
-### CVD Risk Prediction
+5. Run the API:
 
-To predict CVD Risk from an image, run:
-```bash
-python pred.py
+   ```bash
+   python api.py
+   ```
+
+The API will automatically find an available port (default: 8080) and display the URLs:
+
+```plaintext
+Running on: http://127.0.0.1:8080 (localhost)
+Running on: http://192.168.x.x:8080 (local network)
 ```
-- `--path` path of the input image. #Default: `./demos/Positive_CAC_1.npy`
-- `--iter` iteration of the checkpoint to load. #Default: 8000
 
-#### Input
+## Environment Variables
 
-The model takes a normalized 128x128x128 `numpy.ndarray` as an input, i.e., each item in the `ndarray` ranges 0~1.
+The application uses environment variables for configuration. You can set these in the `.env` file.
 
-#### Output
+### Key Environment Variables
 
-A real number in \[0, 1\] indicates the estimated CVD risk.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ENV` | Application environment (dev, test, prod) | `dev` |
+| `PORT` | Port number for the server | `8080` |
+| `DEVICE` | Device to use for model inference (cuda, cpu) | `cuda` if available |
+| `MODEL_ITER` | Model iteration checkpoint to load | `700` |
+| `LOG_LEVEL` | Logging level | `DEBUG` in dev, `INFO` otherwise |
+| `CLEANUP_ENABLED` | Enable automatic cleanup of old files | `true` |
 
-#### Demo
+For a complete list of environment variables, see the [ENV_README.md](ENV_README.md) file.
 
-We uploaded 4 demos in the `./demo` folder, including one CVD negative case and three CVD positive case. One of the CVD positive subjects died because of CVD in the trial. 
+## API Endpoints
 
-The name of the file indicates its label and the CAC grade evaluated by our radiologists.
+### POST /api_predict
 
+Predict CVD risk from DICOM images in a ZIP file.
 
-## Citation
-Please cite these papers in your publications if the code helps your research:
-```
-@Article{chao2021deep,
-  author  = {Chao, Hanqing and Shan, Hongming and Homayounieh, Fatemeh and Singh, Ramandeep and Khera, Ruhani Doda and Guo, Hengtao and Su, Timothy and Wang, Ge and Kalra, Mannudeep K. and Yan, Pingkun},
-  title   = {Deep learning predicts cardiovascular disease risks from lung cancer screening low dose computed tomography},
-  journal = {Nature Communications},
-  year    = {2021},
-  volume  = {12},
-  number  = {1},
-  pages   = {2963},
-  url     = {https://doi.org/10.1038/s41467-021-23235-4},
+**Parameters:**
+
+- `file`: ZIP file containing DICOM images (multipart/form-data)
+
+**Response:**
+
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "predictions": [
+    {
+      "score": 0.75
+    }
+  ],
+  "overlay_images": "http://localhost:8080/download_zip/550e8400-e29b-41d4-a716-446655440000",
+  "attention_info": {
+    "attention_scores": [
+      {
+        "file_name_pred": "pred_image1.png",
+        "attention_score": 0.85
+      },
+      {
+        "file_name_pred": "pred_image2.png",
+        "attention_score": 0.65
+      }
+    ],
+    "total_images": 10,
+    "returned_images": 2
+  },
+  "message": "Prediction successful."
 }
 ```
-Link to paper:
-- [Deep Learning Predicts Cardiovascular Disease Risks from Lung Cancer Screening Low Dose Computed Tomography](https://www.nature.com/articles/s41467-021-23235-4)
 
+### GET /download_zip/{session_id}
+
+Download the ZIP file containing overlay images with Grad-CAM visualizations.
+
+**Parameters:**
+
+- `session_id`: Session ID from the prediction response
+
+**Response:**
+
+- ZIP file containing overlay images
+
+### GET /preview/{session_id}/{filename}
+
+Preview a specific overlay image.
+
+**Parameters:**
+
+- `session_id`: Session ID from the prediction response
+- `filename`: Name of the file to preview
+
+**Response:**
+
+- Image file
+
+## Usage Examples
+
+### Using curl
+
+```bash
+# Predict CVD risk from a ZIP file containing DICOM images
+curl -X POST "http://localhost:8080/api_predict" \
+     -H "accept: application/json" \
+     -H "Content-Type: multipart/form-data" \
+     -F "file=@path/to/dicom_images.zip"
+
+# Download the results ZIP file
+curl -X GET "http://localhost:8080/download_zip/550e8400-e29b-41d4-a716-446655440000" \
+     -o results.zip
+
+# Preview a specific overlay image
+curl -X GET "http://localhost:8080/preview/550e8400-e29b-41d4-a716-446655440000/pred_image1.png" \
+     -o preview.png
+```
+
+### Using Python requests
+
+```python
+import requests
+
+# Predict CVD risk from a ZIP file containing DICOM images
+url = "http://localhost:8080/api_predict"
+files = {
+    "file": ("dicom_images.zip", open("path/to/dicom_images.zip", "rb"))
+}
+
+response = requests.post(url, files=files)
+result = response.json()
+print(result)
+
+# Get the session_id from the response
+session_id = result["session_id"]
+
+# Download the results ZIP file
+download_url = f"http://localhost:8080/download_zip/{session_id}"
+download_response = requests.get(download_url)
+with open("results.zip", "wb") as f:
+    f.write(download_response.content)
+
+# Preview a specific overlay image
+image_name = result["attention_info"]["attention_scores"][0]["file_name_pred"]
+preview_url = f"http://localhost:8080/preview/{session_id}/{image_name}"
+preview_response = requests.get(preview_url)
+with open("preview.png", "wb") as f:
+    f.write(preview_response.content)
+```
+
+## Directory Structure
+
+```plaintext
+CVD-Risk-Estimator/
+├── api.py                # FastAPI implementation
+├── heart_detector.py     # Heart detection using RetinaNet
+├── image.py              # DICOM image processing
+├── tri_2d_net/           # Tri2D-Net model implementation
+├── checkpoint/           # Model checkpoints
+├── config.py             # Configuration settings
+├── logger.py             # Logging configuration
+├── requirements.txt      # Project dependencies
+├── .env                  # Environment variables (local)
+├── .env.example          # Environment variables template
+├── ENV_README.md         # Environment variables documentation
+├── README.md             # This file
+├── uploads/              # Temporary upload directory
+├── results/              # Results and visualizations
+└── logs/                 # Application logs
+```
+
+## Error Handling
+
+The API returns appropriate HTTP status codes and error messages:
+
+- 200: Success
+- 400: Bad Request (invalid input, missing files)
+- 422: Unprocessable Entity (could not detect heart)
+- 500: Internal Server Error
+
+## Logging
+
+Logs are stored in the `logs` directory with UTF-8 encoding to support multiple languages. The log format is:
+
+```log
+2023-01-01 12:00:00,000 - api - INFO - Loading models on application startup...
+2023-01-01 12:00:01,000 - api - ERROR - Error during processing: Could not detect heart
+```
+
+## Model Loading Optimization
+
+The application is optimized to load models only once during startup using FastAPI's lifespan context manager. This improves performance and reduces memory usage.
+
+## Unicode Support
+
+The application supports Unicode characters in logs and messages, making it suitable for use in multiple languages.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
-The source code of Tri2D-Net is licensed under a MIT-style license, as found in the [LICENSE](LICENSE) file.
-This code is only freely available for non-commercial use, and may be redistributed under these conditions.
-For commercial queries, please contact [Dr. Pingkun Yan](https://dial.rpi.edu/people/pingkun-yan).
+
+This project is licensed under the MIT License - see the LICENSE file for details.
