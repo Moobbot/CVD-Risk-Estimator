@@ -343,7 +343,8 @@ class Model:
                 os.path.join(
                     "checkpoint",
                     "{}-{:0>5}-encoder.ptm".format(self.save_name, restore_iter),
-                )
+                ),
+                weights_only=False
             )
         )
         opt_path = os.path.join(
