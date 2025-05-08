@@ -1,16 +1,18 @@
 import os
+import re
 
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+import imageio
 from scipy.ndimage import gaussian_filter
 from skimage.transform import resize as imresize
 import pydicom  # Thêm import pydicom
 
 from bbox_cut import crop_w_bbox, parse_bbox
 from utils import norm, CT_resize
-from config import CLEANUP_CONFIG  # Import cấu hình
+from config import CLEANUP_CONFIG, FOLDERS  # Import cấu hình
 
 
 class Image:
@@ -107,16 +109,25 @@ class Image:
                 output_folder, f"{i}_{self.dicom_names[i]}.png")
             plt.imsave(output_path, slice_img)
 
-    def save_grad_cam_on_original(self, cam_data, output_folder):
+    def save_grad_cam_on_original(self, cam_data, output_folder, create_gif=False, session_id=None):
         """
         Save grad-cam visualization overlaid on the original DICOM images
+        and optionally create a GIF directly from the images in memory
 
         Args:
             cam_data: The grad-cam heatmap array (128x128x128)
             output_folder: Folder to save the visualizations
+            create_gif: Whether to create a GIF from the images (default: False)
+            session_id: Session ID for the GIF filename (required if create_gif=True)
+
+        Returns:
+            tuple: (bool, str) - (Success status, GIF path if created or None)
         """
         if self.min_point is None or self.max_point is None:
-            return False
+            return False, None
+
+        if create_gif and session_id is None:
+            raise ValueError("session_id is required when create_gif=True")
 
         os.makedirs(output_folder, exist_ok=True)
 
@@ -127,6 +138,10 @@ class Image:
         color = cv2.COLORMAP_JET
 
         reversed_img = np.flip(self.org_npy, axis=0)
+
+        # List to store blended images for GIF creation
+        blended_images = []
+        image_indices = []
 
         for idx, orig_idx in enumerate(heart_indices):
             if idx >= len(cam_data):
@@ -166,7 +181,17 @@ class Image:
                 output_folder, f"{orig_idx}_{self.dicom_names[orig_idx]}.png")
             plt.imsave(output_path, blended)
 
-        return True
+            # Store the blended image for GIF creation if requested
+            if create_gif:
+                blended_images.append(blended)
+                image_indices.append(orig_idx)
+
+        # Create GIF directly from memory if requested
+        gif_path = None
+        if create_gif and blended_images:
+            gif_path = self.create_gif_from_images(blended_images, image_indices, session_id)
+
+        return True, gif_path
 
     def to_network_input(self):
         """
@@ -196,4 +221,80 @@ class Image:
         except Exception as e:
             print(f"Lỗi khi tạo đầu vào cho mạng neural: {e}")
             raise
+
+    def create_gif_from_images(self, images, indices, session_id):
+        """
+        Tạo file GIF trực tiếp từ danh sách ảnh trong bộ nhớ
+
+        Args:
+            images: Danh sách các ảnh đã xử lý trong bộ nhớ
+            indices: Danh sách các chỉ số tương ứng với mỗi ảnh
+            session_id: ID của phiên làm việc
+
+        Returns:
+            str: Đường dẫn đến file GIF đã tạo, hoặc None nếu không thành công
+        """
+        try:
+            gif_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+
+            if not images:
+                return None
+
+            # Sắp xếp ảnh theo thứ tự chỉ số
+            sorted_images = [img for _, img in sorted(zip(indices, images))]
+
+            # Lưu file GIF trực tiếp từ danh sách ảnh trong bộ nhớ
+            imageio.mimsave(gif_path, sorted_images, duration=0.2, loop=0)
+
+            return gif_path
+
+        except Exception as e:
+            print(f"Lỗi khi tạo GIF từ ảnh trong bộ nhớ: {e}")
+            return None
+
+    def create_gif_from_overlay_images(self, output_dir, session_id):
+        """
+        Tạo file GIF từ các ảnh overlay đã lưu trên đĩa
+
+        Args:
+            output_dir: Thư mục chứa các ảnh overlay
+            session_id: ID của phiên làm việc
+
+        Returns:
+            str: Đường dẫn đến file GIF đã tạo, hoặc None nếu không thành công
+        """
+        try:
+            gif_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+
+            # Lấy danh sách các file ảnh PNG
+            image_files = []
+            for file in os.listdir(output_dir):
+                if file.endswith(".png"):
+                    image_files.append(os.path.join(output_dir, file))
+
+            if not image_files:
+                return None
+
+            # Sắp xếp ảnh theo thứ tự số slice
+            def extract_index(filename):
+                match = re.search(r'^(\d+)_', os.path.basename(filename))
+                if match:
+                    return int(match.group(1))
+                return 0
+
+            image_files.sort(key=extract_index)
+
+            # Đọc các ảnh và tạo GIF
+            images = []
+            for image_file in image_files:
+                images.append(imageio.imread(image_file))
+
+            # Lưu file GIF
+            imageio.mimsave(gif_path, images, duration=0.2, loop=0)
+
+            return gif_path
+
+        except Exception as e:
+            print(f"Lỗi khi tạo GIF từ file: {e}")
+            return None
 

@@ -121,6 +121,9 @@ def create_zip_result(output_dir, session_id):
     return result_zip_path
 
 
+
+
+
 def process_attention_scores(cam_data, heart_indices, dicom_names):
     """Xử lý điểm chú ý để trả về định dạng giống Sybil"""
     attention_scores = []
@@ -138,7 +141,7 @@ def process_attention_scores(cam_data, heart_indices, dicom_names):
         if score > 0:
             attention_scores.append(
                 {
-                    "file_name_pred": f"pred_{dicom_names[orig_idx]}.png",
+                    "file_name_pred": f"{orig_idx}_{dicom_names[orig_idx]}.png",
                     "attention_score": score,
                 }
             )
@@ -291,9 +294,14 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
             logger.info("Calculating and saving Grad-CAM...")
             cam_data = model.grad_cam_visual(network_input)
 
-            # Lưu ảnh Grad-CAM vào thư mục
-            img.save_grad_cam_on_original(cam_data, overlay_dir)
+            # Lưu ảnh Grad-CAM vào thư mục và tạo GIF trực tiếp từ bộ nhớ
+            success, gif_path = img.save_grad_cam_on_original(cam_data, overlay_dir, create_gif=True, session_id=session_id)
             logger.info(f"Saved Grad-CAM to directory: {overlay_dir}")
+
+            if not success:
+                return JSONResponse(
+                    {"error": "Failed to save overlay images"}, status_code=500
+                )
 
             # Kiểm tra thư mục overlay có tồn tại và có ảnh không
             if not os.path.exists(overlay_dir):
@@ -325,9 +333,24 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
                     {"error": f"Failed to create zip file: {str(e)}"}, status_code=500
                 )
 
-            # Tạo URL cho file ZIP
+            # Ghi log kết quả tạo GIF
+            if gif_path:
+                logger.info(f"Created GIF file at: {gif_path}")
+            else:
+                logger.warning("Could not create GIF file")
+                # Thử tạo GIF từ file nếu tạo trực tiếp từ bộ nhớ không thành công
+                try:
+                    gif_path = img.create_gif_from_overlay_images(overlay_dir, session_id)
+                    if gif_path:
+                        logger.info(f"Created GIF file from disk at: {gif_path}")
+                except Exception as e:
+                    logger.error(f"Error creating GIF file from disk: {str(e)}")
+                    # Không trả về lỗi, tiếp tục xử lý vì GIF là tính năng bổ sung
+
+            # Tạo URL cho file ZIP và GIF
             base_url = str(request.base_url).rstrip("/")
             zip_download_link = f"{base_url}/download_zip/{session_id}"
+            gif_download_link = f"{base_url}/download_gif/{session_id}" if gif_path else None
 
             # Xử lý điểm chú ý
             heart_indices = [i for i, val in enumerate(img.bbox_selected) if val == 1]
@@ -342,6 +365,7 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
                 "session_id": session_id,
                 "predictions": predictions,
                 "overlay_images": zip_download_link,
+                "overlay_gif": gif_download_link,
                 "attention_info": attention_info,
                 "message": "Prediction successful.",
             }
@@ -373,6 +397,20 @@ async def download_zip(session_id: str):
     logger.warning(f"⚠️ File not found: {file_path}")
     return JSONResponse(
         {"error": "File not found", "session_id": session_id}, status_code=404
+    )
+
+
+@app.get("/download_gif/{session_id}")
+async def download_gif(session_id: str):
+    """API để tải xuống file GIF chứa ảnh overlay theo Session ID"""
+    file_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+    if os.path.exists(file_path):
+        logger.info(f"✅ GIF file found: {file_path}, preparing download...")
+        return FileResponse(file_path, filename=f"{session_id}_results.gif", media_type="image/gif")
+
+    logger.warning(f"⚠️ GIF file not found: {file_path}")
+    return JSONResponse(
+        {"error": "GIF file not found", "session_id": session_id}, status_code=404
     )
 
 
