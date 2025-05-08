@@ -4,7 +4,10 @@ import torch
 import numpy as np
 
 from config import FOLDERS_DETECTOR, MODEL_CONFIG, ERROR_MESSAGES
-from logger import logger, log_message
+from logger import setup_logger, log_message
+
+# Set up logger
+logger = setup_logger("cvd_model")
 
 # Thêm đường dẫn đến thư mục detector từ config
 sys.path.append(FOLDERS_DETECTOR)

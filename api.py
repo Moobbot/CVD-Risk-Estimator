@@ -1,7 +1,5 @@
 import os
-import sys
 import zipfile
-import logging
 import uuid
 import shutil
 import traceback
@@ -19,35 +17,18 @@ from config import FOLDERS, MODEL_CONFIG, API_TITLE, API_DESCRIPTION, API_VERSIO
 from tri_2d_net.init_model import init_model
 from heart_detector import HeartDetector
 from image import Image
+from logger import setup_logger
 
 # Cấu hình SimpleITK
 sitk.ProcessObject.SetGlobalDefaultThreader("platform")
 
-# Cấu hình logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(os.path.join(FOLDERS["LOGS"], "api.log"), encoding="utf-8")
-    ],
-)
-
-# Create a StreamHandler with UTF-8 encoding
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-console_handler.setFormatter(formatter)
-# Force UTF-8 encoding for console output
-console_handler.stream.reconfigure(encoding="utf-8")
-
-# Get logger and add the console handler
-logger = logging.getLogger(__name__)
-logger.addHandler(console_handler)
+# Set up logger with date-based organization
+logger = setup_logger("api")
 
 
 # Define lifespan context manager for FastAPI
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_: FastAPI):
     """
     Lifespan context manager for FastAPI
     Handles startup and shutdown events
@@ -414,8 +395,8 @@ async def preview_file(session_id: str, filename: str):
 
 if __name__ == "__main__":
     import uvicorn
-    from config import HOST_CONNECT, PORT_CONNECT
     import socket
+    from config import HOST_CONNECT, PORT_CONNECT
 
     custom_port = PORT_CONNECT
 
