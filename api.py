@@ -370,7 +370,8 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
                 "message": "Prediction successful.",
             }
 
-            logger.info(f"Response: {response}")
+            # logger.info(f"Response: {response}")
+            logger.info(f"Prediction {session_id} successful.")
             return JSONResponse(response)
 
         except Exception as e:
@@ -403,10 +404,19 @@ async def download_zip(session_id: str):
 @app.get("/download_gif/{session_id}")
 async def download_gif(session_id: str):
     """API để tải xuống file GIF chứa ảnh overlay theo Session ID"""
-    file_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+    # Đường dẫn mới: file GIF nằm trong thư mục session_id
+    session_dir = os.path.join(FOLDERS["RESULTS"], session_id)
+    file_path = os.path.join(session_dir, "results.gif")
+
     if os.path.exists(file_path):
         logger.info(f"✅ GIF file found: {file_path}, preparing download...")
         return FileResponse(file_path, filename=f"{session_id}_results.gif", media_type="image/gif")
+
+    # Kiểm tra đường dẫn cũ để tương thích ngược (nếu cần)
+    old_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+    if os.path.exists(old_path):
+        logger.info(f"✅ GIF file found at old path: {old_path}, preparing download...")
+        return FileResponse(old_path, filename=f"{session_id}_results.gif", media_type="image/gif")
 
     logger.warning(f"⚠️ GIF file not found: {file_path}")
     return JSONResponse(

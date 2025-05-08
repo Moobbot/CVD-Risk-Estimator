@@ -98,8 +98,8 @@ ERROR_MESSAGES = {
 # Cleanup Configuration
 CLEANUP_CONFIG = {
     "ENABLED": os.getenv("CLEANUP_ENABLED", "true").lower() in ("true", "1", "yes"),
-    "INTERVAL_HOURS": int(os.getenv("CLEANUP_INTERVAL_HOURS", 24)),  # Run cleanup every 24 hours
-    "MAX_AGE_DAYS": int(os.getenv("CLEANUP_MAX_AGE_DAYS", 7)),  # Keep files for 7 days
+    "INTERVAL_HOURS": int(os.getenv("CLEANUP_INTERVAL_HOURS", 3)),  # Run cleanup every 3 hours
+    "MAX_AGE_DAYS": int(os.getenv("CLEANUP_MAX_AGE_DAYS", 1)),  # Keep files for 1 days
     "PATTERNS": {
         "UPLOAD": "*.dcm",
         "RESULTS": "*.zip",

@@ -64,9 +64,9 @@ pip install python-dotenv
 - `CLEANUP_ENABLED`: Enable automatic cleanup of old files
   - Default: `true`
 - `CLEANUP_INTERVAL_HOURS`: Interval between cleanup runs in hours
-  - Default: `24`
+  - Default: `3`
 - `CLEANUP_MAX_AGE_DAYS`: Maximum age of files to keep in days
-  - Default: `7`
+  - Default: `1`
 
 ### Security Configuration
 
@@ -110,8 +110,8 @@ LOG_BACKUP_COUNT=5
 
 # Cleanup Configuration
 CLEANUP_ENABLED=true
-CLEANUP_INTERVAL_HOURS=24
-CLEANUP_MAX_AGE_DAYS=7
+CLEANUP_INTERVAL_HOURS=3
+CLEANUP_MAX_AGE_DAYS=1
 
 # Security Configuration
 # Comma-separated list of allowed IPs or CIDR notations

@@ -8,6 +8,7 @@ API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net
 - Detect heart region using RetinaNet or simple method
 - Predict CVD risk using Tri2D-Net model
 - Generate Grad-CAM visualizations for explainability
+- Create animated GIFs from Grad-CAM visualizations
 - Attention score calculation for important slices
 - Environment variable configuration for easy deployment
 - Unicode support for logging in multiple languages
@@ -100,6 +101,7 @@ Predict CVD risk from DICOM images in a ZIP file.
     }
   ],
   "overlay_images": "http://localhost:8080/download_zip/550e8400-e29b-41d4-a716-446655440000",
+  "overlay_gif": "http://localhost:8080/download_gif/550e8400-e29b-41d4-a716-446655440000",
   "attention_info": {
     "attention_scores": [
       {
@@ -130,6 +132,18 @@ Download the ZIP file containing overlay images with Grad-CAM visualizations.
 
 - ZIP file containing overlay images
 
+### GET /download_gif/{session_id}
+
+Download an animated GIF of the Grad-CAM visualizations.
+
+**Parameters:**
+
+- `session_id`: Session ID from the prediction response
+
+**Response:**
+
+- GIF file containing animated Grad-CAM visualizations
+
 ### GET /preview/{session_id}/{filename}
 
 Preview a specific overlay image.
@@ -157,6 +171,10 @@ curl -X POST "http://localhost:8080/api_predict" \
 # Download the results ZIP file
 curl -X GET "http://localhost:8080/download_zip/550e8400-e29b-41d4-a716-446655440000" \
      -o results.zip
+
+# Download the animated GIF
+curl -X GET "http://localhost:8080/download_gif/550e8400-e29b-41d4-a716-446655440000" \
+     -o results.gif
 
 # Preview a specific overlay image
 curl -X GET "http://localhost:8080/preview/550e8400-e29b-41d4-a716-446655440000/pred_image1.png" \
@@ -186,6 +204,13 @@ download_url = f"http://localhost:8080/download_zip/{session_id}"
 download_response = requests.get(download_url)
 with open("results.zip", "wb") as f:
     f.write(download_response.content)
+
+# Download the animated GIF if available
+if result.get("overlay_gif"):
+    gif_url = result["overlay_gif"]
+    gif_response = requests.get(gif_url)
+    with open("results.gif", "wb") as f:
+        f.write(gif_response.content)
 
 # Preview a specific overlay image
 image_name = result["attention_info"]["attention_scores"][0]["file_name_pred"]
@@ -236,7 +261,7 @@ Logs are stored in the `logs` directory with UTF-8 encoding to support multiple 
 
 ## Model Loading Optimization
 
-The application is optimized to load models only once during startup using FastAPI's lifespan context manager. This improves performance and reduces memory usage.
+The application is optimized to load models only once during startup using FastAPI's lifespan context manager. This improves performance and reduces memory usage by preventing duplicate model loading.
 
 ## Unicode Support
 

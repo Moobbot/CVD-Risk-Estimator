@@ -222,7 +222,7 @@ class Image:
             print(f"Lỗi khi tạo đầu vào cho mạng neural: {e}")
             raise
 
-    def create_gif_from_images(self, images, indices, session_id):
+    def create_gif_from_images(self, images, indices, session_id, output_folder=None):
         """
         Tạo file GIF trực tiếp từ danh sách ảnh trong bộ nhớ
 
@@ -230,12 +230,19 @@ class Image:
             images: Danh sách các ảnh đã xử lý trong bộ nhớ
             indices: Danh sách các chỉ số tương ứng với mỗi ảnh
             session_id: ID của phiên làm việc
+            output_folder: Thư mục để lưu file GIF, nếu None sẽ lưu vào thư mục session_id
 
         Returns:
             str: Đường dẫn đến file GIF đã tạo, hoặc None nếu không thành công
         """
         try:
-            gif_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+            # Nếu không có output_folder, sử dụng thư mục session_id
+            if output_folder is None:
+                output_folder = os.path.join(FOLDERS["RESULTS"], session_id)
+                os.makedirs(output_folder, exist_ok=True)
+
+            # Đường dẫn file GIF trong thư mục session_id
+            gif_path = os.path.join(output_folder, "results.gif")
 
             if not images:
                 return None
@@ -264,7 +271,8 @@ class Image:
             str: Đường dẫn đến file GIF đã tạo, hoặc None nếu không thành công
         """
         try:
-            gif_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
+            # Lưu file GIF trong cùng thư mục với các ảnh overlay
+            gif_path = os.path.join(output_dir, "results.gif")
 
             # Lấy danh sách các file ảnh PNG
             image_files = []
