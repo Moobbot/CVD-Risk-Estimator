@@ -3,10 +3,13 @@
 # @Time    : 2020/12/10
 
 # Heatmap Visualization with Grad-CAM
-
+import sys
 import torch.nn as nn
 
-from net import AttBranch, Branch
+sys.path.append("./")
+
+
+from tri_2d_net.net import AttBranch, Branch
 
 
 class GradCam(nn.Module):
@@ -67,5 +70,4 @@ class GradCam(nn.Module):
         return self.model(input)[0]
 
     def get_intermediate_data(self):
-        return (self.axial_output, self.coronal_output, self.sagittal_output,
-                self.axial_grad, self.coronal_grad, self.sagittal_grad)
+        return (self.axial_output, self.coronal_output, self.sagittal_output, self.axial_grad, self.coronal_grad, self.sagittal_grad)
