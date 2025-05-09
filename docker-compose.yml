@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Phiên bản sử dụng GPU (mặc định)
   cvd-risk-estimator:
     build:
       context: .
@@ -35,3 +36,32 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # Phiên bản sử dụng CPU
+  cvd-risk-estimator-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - USE_GPU=false
+    container_name: cvd-risk-estimator-cpu
+    restart: unless-stopped
+    ports:
+      - "5557:5556"  # Sử dụng cổng khác để tránh xung đột
+    volumes:
+      # Gắn kết thư mục checkpoint để lưu trữ các mô hình
+      - ./checkpoint:/app/checkpoint
+      # Gắn kết thư mục logs để lưu trữ logs
+      - ./logs:/app/logs
+      # Gắn kết thư mục uploads để lưu trữ tệp tải lên
+      - ./uploads:/app/uploads
+      # Gắn kết thư mục results để lưu trữ kết quả
+      - ./results:/app/results
+      # Gắn kết file .env để cấu hình
+      - ./.env:/app/.env
+    environment:
+      - ENV=prod
+      - HOST_CONNECT=0.0.0.0
+      - PORT=5556
+      - DEVICE=cpu
+      - CUDA_VISIBLE_DEVICES=

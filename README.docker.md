@@ -1,12 +1,12 @@
 # Hướng dẫn sử dụng Docker với CVD Risk Estimator
 
-Tài liệu này hướng dẫn cách sử dụng Docker để triển khai ứng dụng CVD Risk Estimator.
+Tài liệu này hướng dẫn cách sử dụng Docker để triển khai ứng dụng CVD Risk Estimator trong cả môi trường có GPU và không có GPU.
 
 ## Yêu cầu
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/) (tùy chọn, nhưng được khuyến nghị)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (nếu sử dụng GPU)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (chỉ khi sử dụng GPU)
 
 ## Cách sử dụng
 
@@ -14,8 +14,10 @@ Tài liệu này hướng dẫn cách sử dụng Docker để triển khai ứn
 
 Docker Compose giúp quản lý container dễ dàng hơn và cho phép cấu hình thông qua file `docker-compose.yml`.
 
+#### Với GPU
+
 ```bash
-# Xây dựng và khởi động container
+# Xây dựng và khởi động container với GPU
 docker-compose up -d
 
 # Xem logs
@@ -25,19 +27,43 @@ docker-compose logs -f
 docker-compose down
 ```
 
+#### Không có GPU
+
+```bash
+# Sử dụng file docker-compose.cpu.yml đặc biệt cho môi trường không có GPU
+docker-compose -f docker-compose.cpu.yml up -d
+
+# Xem logs
+docker-compose -f docker-compose.cpu.yml logs -f
+
+# Dừng container
+docker-compose -f docker-compose.cpu.yml down
+```
+
+> **Lưu ý**: Phiên bản CPU sử dụng Dockerfile.cpu riêng biệt đã được tối ưu hóa cho môi trường không có GPU.
+
 ### 2. Xây dựng và chạy với Docker
 
 Nếu bạn không sử dụng Docker Compose, bạn có thể sử dụng các lệnh Docker trực tiếp:
 
+#### Sử dụng GPU
+
 ```bash
-# Xây dựng image
-docker build -t cvd-risk-estimator .
+# Xây dựng image cho GPU
+docker build --build-arg USE_GPU=true -t cvd-risk-estimator-gpu .
 
 # Chạy container với GPU
-docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator
+docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-gpu
+```
 
-# Chạy container không có GPU
-docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env -e DEVICE=cpu --name cvd-risk-estimator -d cvd-risk-estimator
+#### Sử dụng CPU
+
+```bash
+# Xây dựng image cho CPU sử dụng Dockerfile.cpu
+docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .
+
+# Chạy container với CPU
+docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-cpu
 ```
 
 ## Cấu hình
@@ -50,10 +76,9 @@ Bạn có thể cấu hình ứng dụng bằng cách chỉnh sửa file `.env` 
 environment:
   - ENV=prod
   - HOST_CONNECT=0.0.0.0
-  - PORT=5556
+  - PORT=8080
   - CUDA_VISIBLE_DEVICES=0
   - DEVICE=cuda
-  - CUDA_VERSION=12.1
 ```
 
 ### Volumes
@@ -76,7 +101,13 @@ Nếu bạn gặp lỗi liên quan đến GPU, hãy đảm bảo:
 2. Driver NVIDIA đã được cài đặt và hoạt động
 3. Kiểm tra với lệnh `nvidia-smi`
 
-Nếu vẫn gặp vấn đề, bạn có thể chuyển sang chế độ CPU bằng cách đặt `DEVICE=cpu` trong biến môi trường.
+Nếu vẫn gặp vấn đề, bạn có thể chuyển sang chế độ CPU bằng cách:
+
+1. Sử dụng file Docker Compose dành riêng cho CPU: `docker-compose -f docker-compose.cpu.yml up -d`
+2. Hoặc xây dựng với Dockerfile.cpu: `docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .`
+3. Hoặc đặt `DEVICE=cpu` trong biến môi trường khi chạy container đã tồn tại
+
+Lưu ý rằng chế độ CPU sẽ chậm hơn đáng kể cho việc suy luận nhưng cho phép ứng dụng chạy trên bất kỳ máy nào mà không cần GPU.
 
 ### Lỗi khi tải mô hình
 

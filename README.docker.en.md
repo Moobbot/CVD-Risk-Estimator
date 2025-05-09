@@ -1,12 +1,12 @@
 # Docker Guide for CVD Risk Estimator
 
-This document provides instructions on how to use Docker to deploy the CVD Risk Estimator application.
+This document provides instructions on how to use Docker to deploy the CVD Risk Estimator application in both GPU and non-GPU environments.
 
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/) (optional, but recommended)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (if using GPU)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (only when using GPU)
 
 ## Usage
 
@@ -14,8 +14,10 @@ This document provides instructions on how to use Docker to deploy the CVD Risk 
 
 Docker Compose makes container management easier and allows configuration through the `docker-compose.yml` file.
 
+#### With GPU
+
 ```bash
-# Build and start the container
+# Build and start the container with GPU
 docker-compose up -d
 
 # View logs
@@ -25,19 +27,43 @@ docker-compose logs -f
 docker-compose down
 ```
 
+#### Without GPU
+
+```bash
+# Use the special docker-compose.cpu.yml file for non-GPU environments
+docker-compose -f docker-compose.cpu.yml up -d
+
+# View logs
+docker-compose -f docker-compose.cpu.yml logs -f
+
+# Stop the container
+docker-compose -f docker-compose.cpu.yml down
+```
+
+> **Note**: The CPU version uses a separate Dockerfile.cpu that has been optimized for non-GPU environments.
+
 ### 2. Build and Run with Docker
 
 If you don't use Docker Compose, you can use Docker commands directly:
 
+#### Using GPU
+
 ```bash
-# Build the image
-docker build -t cvd-risk-estimator .
+# Build the image for GPU
+docker build --build-arg USE_GPU=true -t cvd-risk-estimator-gpu .
 
 # Run the container with GPU
-docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator
+docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-gpu
+```
 
-# Run the container without GPU
-docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env -e DEVICE=cpu --name cvd-risk-estimator -d cvd-risk-estimator
+#### Using CPU
+
+```bash
+# Build the image for CPU using Dockerfile.cpu
+docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .
+
+# Run the container with CPU
+docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-cpu
 ```
 
 ## Configuration
@@ -76,7 +102,13 @@ If you encounter GPU-related errors, ensure:
 2. NVIDIA drivers are installed and working
 3. Check with the `nvidia-smi` command
 
-If you still have issues, you can switch to CPU mode by setting `DEVICE=cpu` in the environment variables.
+If you still have issues, you can switch to CPU mode by:
+
+1. Using the CPU-specific Docker Compose file: `docker-compose -f docker-compose.cpu.yml up -d`
+2. Or building with Dockerfile.cpu: `docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .`
+3. Or setting `DEVICE=cpu` in the environment variables when running an existing container
+
+Note that CPU mode will be significantly slower for inference but allows the application to run on any machine without GPU requirements.
 
 ### Model Loading Errors
 

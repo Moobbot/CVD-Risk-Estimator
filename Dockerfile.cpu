@@ -1,10 +1,6 @@
-# Dockerfile hỗ trợ cả môi trường GPU và CPU
-# Mặc định sử dụng GPU
-ARG USE_GPU=true
-
-# Sử dụng image Python 3.10 với CUDA 12.1 làm base image cho GPU
-# Hoặc sử dụng image Python 3.10 Ubuntu cho CPU
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+# Dockerfile cho môi trường không có GPU
+# Sử dụng image Ubuntu 22.04 làm base image
+FROM ubuntu:22.04
 
 # Thiết lập biến môi trường
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -42,17 +38,8 @@ WORKDIR /app
 # Sao chép setup.py và requirements.txt trước để tận dụng Docker cache
 COPY setup.py requirements.txt ./
 
-# Cài đặt các gói phụ thuộc Python thông qua setup.py
-# Sử dụng build argument để xác định cài đặt CUDA hay CPU
-ARG USE_GPU=true
-ARG CUDA_VERSION=12.1
-
-# Cài đặt các gói phụ thuộc Python
-RUN if [ "$USE_GPU" = "true" ]; then \
-        python setup.py --cuda-version ${CUDA_VERSION}; \
-    else \
-        python setup.py --force-cpu; \
-    fi
+# Cài đặt các gói phụ thuộc Python thông qua setup.py với chế độ CPU
+RUN python setup.py --force-cpu
 
 # Sao chép mã nguồn ứng dụng
 COPY . .
@@ -63,13 +50,9 @@ RUN mkdir -p uploads results logs checkpoint detector
 # Thiết lập biến môi trường cho ứng dụng
 ENV HOST_CONNECT=0.0.0.0 \
     PORT=5556 \
-    ENV=prod
-
-# Thiết lập biến môi trường dựa trên loại image
-ENV DEVICE=${USE_GPU:+cuda}
-ENV DEVICE=${DEVICE:-cpu}
-ENV CUDA_VISIBLE_DEVICES=${USE_GPU:+0}
-ENV CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
+    ENV=prod \
+    DEVICE=cpu \
+    CUDA_VISIBLE_DEVICES=
 
 # Mở cổng cho API
 EXPOSE 5556
