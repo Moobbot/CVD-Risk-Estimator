@@ -56,11 +56,11 @@ API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net
    python api.py
    ```
 
-The API will automatically find an available port (default: 8080) and display the URLs:
+The API will automatically find an available port (default: 5556) and display the URLs:
 
 ```plaintext
-Running on: http://127.0.0.1:8080 (localhost)
-Running on: http://192.168.x.x:8080 (local network)
+Running on: http://127.0.0.1:5556 (localhost)
+Running on: http://192.168.x.x:5556 (local network)
 ```
 
 ## Environment Variables
@@ -72,7 +72,7 @@ The application uses environment variables for configuration. You can set these 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ENV` | Application environment (dev, test, prod) | `dev` |
-| `PORT` | Port number for the server | `8080` |
+| `PORT` | Port number for the server | `5556` |
 | `DEVICE` | Device to use for model inference (cuda, cpu) | `cuda` if available |
 | `MODEL_ITER` | Model iteration checkpoint to load | `700` |
 | `LOG_LEVEL` | Logging level | `DEBUG` in dev, `INFO` otherwise |
@@ -100,8 +100,8 @@ Predict CVD risk from DICOM images in a ZIP file.
       "score": 0.75
     }
   ],
-  "overlay_images": "http://localhost:8080/download_zip/550e8400-e29b-41d4-a716-446655440000",
-  "overlay_gif": "http://localhost:8080/download_gif/550e8400-e29b-41d4-a716-446655440000",
+  "overlay_images": "http://localhost:5556/download_zip/550e8400-e29b-41d4-a716-446655440000",
+  "overlay_gif": "http://localhost:5556/download_gif/550e8400-e29b-41d4-a716-446655440000",
   "attention_info": {
     "attention_scores": [
       {
@@ -163,21 +163,21 @@ Preview a specific overlay image.
 
 ```bash
 # Predict CVD risk from a ZIP file containing DICOM images
-curl -X POST "http://localhost:8080/api_predict" \
+curl -X POST "http://localhost:5556/api_predict" \
      -H "accept: application/json" \
      -H "Content-Type: multipart/form-data" \
      -F "file=@path/to/dicom_images.zip"
 
 # Download the results ZIP file
-curl -X GET "http://localhost:8080/download_zip/550e8400-e29b-41d4-a716-446655440000" \
+curl -X GET "http://localhost:5556/download_zip/550e8400-e29b-41d4-a716-446655440000" \
      -o results.zip
 
 # Download the animated GIF
-curl -X GET "http://localhost:8080/download_gif/550e8400-e29b-41d4-a716-446655440000" \
+curl -X GET "http://localhost:5556/download_gif/550e8400-e29b-41d4-a716-446655440000" \
      -o results.gif
 
 # Preview a specific overlay image
-curl -X GET "http://localhost:8080/preview/550e8400-e29b-41d4-a716-446655440000/pred_image1.png" \
+curl -X GET "http://localhost:5556/preview/550e8400-e29b-41d4-a716-446655440000/pred_image1.png" \
      -o preview.png
 ```
 
@@ -187,7 +187,7 @@ curl -X GET "http://localhost:8080/preview/550e8400-e29b-41d4-a716-446655440000/
 import requests
 
 # Predict CVD risk from a ZIP file containing DICOM images
-url = "http://localhost:8080/api_predict"
+url = "http://localhost:5556/api_predict"
 files = {
     "file": ("dicom_images.zip", open("path/to/dicom_images.zip", "rb"))
 }
@@ -200,7 +200,7 @@ print(result)
 session_id = result["session_id"]
 
 # Download the results ZIP file
-download_url = f"http://localhost:8080/download_zip/{session_id}"
+download_url = f"http://localhost:5556/download_zip/{session_id}"
 download_response = requests.get(download_url)
 with open("results.zip", "wb") as f:
     f.write(download_response.content)
@@ -214,7 +214,7 @@ if result.get("overlay_gif"):
 
 # Preview a specific overlay image
 image_name = result["attention_info"]["attention_scores"][0]["file_name_pred"]
-preview_url = f"http://localhost:8080/preview/{session_id}/{image_name}"
+preview_url = f"http://localhost:5556/preview/{session_id}/{image_name}"
 preview_response = requests.get(preview_url)
 with open("preview.png", "wb") as f:
     f.write(preview_response.content)

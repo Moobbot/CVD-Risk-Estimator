@@ -1,22 +1,31 @@
-import io
-import logging
-import platform
-import zipfile
-import os
-import subprocess
-import re
-import json
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
-try:
-    import requests
-except ModuleNotFoundError as e:
-    # print("Requests module not found:", e)
-    subprocess.run(["pip", "install", "requests"])
-    import requests
+"""
+Setup script for CVD Risk Estimator.
+This script installs required packages and downloads model checkpoints.
+"""
+
+import argparse
+import logging
+import os
+import platform
+import re
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger(__name__)
+
+# Minimum Python version required
+MIN_PYTHON_VERSION = (3, 7)
 
 # Model download URLs from Dropbox
 # Note: We add 'dl=1' to the end of Dropbox URLs to force direct download
@@ -25,79 +34,139 @@ MODEL_DOWNLOAD_URLS = {
     "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm": "https://www.dropbox.com/scl/fi/egwtns5xrbasg1i6dse19/NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm?rlkey=8csdx2h4dcoxwfo03k59qla94&st=kc1pa3t3&dl=1",
 }
 
+# PyTorch versions
+PYTORCH_VERSIONS = {
+    "cpu": ["torch==2.5.1", "torchvision==0.20.1", "torchaudio==2.5.1"],
+    "cuda": ["torch", "torchvision", "torchaudio"],
+}
 
-def download_file(url, folder, filename):
+# CUDA versions
+CUDA_VERSIONS = {
+    "11.8": "cu118",
+    "12.1": "cu121",
+}
+
+# Default CUDA version
+DEFAULT_CUDA_VERSION = "12.1"
+
+
+def check_python_version() -> bool:
     """
-    Download a file from a URL and save it to a specified folder.
-
-    Args:
-    - url (str): URL of the file to download.
-    - folder (str): Path to the folder where the file will be saved.
-    - filename (str): Name of the file to be saved.
+    Check if the current Python version meets the minimum requirements.
 
     Returns:
-    - str: Full path of the downloaded file, or None if the file already exists.
+        bool: True if the Python version is sufficient, False otherwise.
     """
+    current_version = sys.version_info[:2]
+    if current_version < MIN_PYTHON_VERSION:
+        logger.error(
+            f"Python {MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]} or higher is required. "
+            f"You are using Python {current_version[0]}.{current_version[1]}."
+        )
+        return False
+    return True
 
-    # Tạo đường dẫn đầy đủ của tệp
-    filepath = os.path.join(folder, filename)
 
-    # Kiểm tra xem tệp đã tồn tại không
-    if os.path.exists(filepath):
-        print("Tệp đã tồn tại:", filepath)
-        return filepath
+def download_file(url: str, destination: str, show_progress: bool = True) -> bool:
+    """
+    Download a file from a URL with progress reporting.
 
-    # Tạo thư mục nếu nó chưa tồn tại
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    Args:
+        url: URL of the file to download
+        destination: Path where the file will be saved
+        show_progress: Whether to show download progress
 
+    Returns:
+        bool: True if download was successful, False otherwise
+    """
     try:
-        response = requests.get(url)
+        # Install requests if not already installed
+        try:
+            import requests
+        except ImportError:
+            logger.info("Installing requests package...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "requests"], check=True)
+            import requests
+
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(os.path.abspath(destination)), exist_ok=True)
+
+        # Check if file already exists
+        if os.path.exists(destination):
+            logger.info(f"File already exists: {destination}")
+            return True
+
+        # Download the file with a session to handle redirects
+        logger.info(f"Downloading file from: {url}")
+        session = requests.Session()
+        response = session.get(url, stream=True)
         response.raise_for_status()
-        with open(filepath, "wb") as f:
-            f.write(response.content)
-        logger.info(f"File downloaded and saved to: {filepath}")
-        return filepath
-    except requests.RequestException as e:
+
+        # Get total file size if available
+        total_size = int(response.headers.get('content-length', 0))
+
+        # Save the file with progress reporting
+        with open(destination, "wb") as f:
+            if total_size > 0 and show_progress:
+                downloaded = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        # Print progress every 5%
+                        if downloaded % (total_size // 20) < 8192:
+                            percent = (downloaded / total_size) * 100
+                            logger.info(f"Download progress: {percent:.1f}%")
+            else:
+                # If content-length is not available or progress not needed
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+        logger.info(f"Successfully downloaded file: {destination}")
+        return True
+
+    except Exception as e:
         logger.error(f"Error downloading file: {e}")
-        return None
+        return False
 
 
-def download_and_extract_zip(url, extract_path="."):
+def download_and_extract_zip(url: str, extract_path: str = ".") -> bool:
     """
     Download a ZIP file from the given URL and extract its contents.
 
     Args:
-    - url (str): The URL of the ZIP file to download.
-    - extract_path (str): The path where the contents of the ZIP file will be extracted. Default is the current directory.
+        url: The URL of the ZIP file to download
+        extract_path: The path where the contents of the ZIP file will be extracted
 
     Returns:
-    - bool: True if the download and extraction were successful, False otherwise.
+        bool: True if the download and extraction were successful, False otherwise
     """
     try:
-        # Check if the destination folder exists, if not, create it
-        if not os.path.exists(extract_path):
-            os.makedirs(extract_path)
+        # Create directory if it doesn't exist
+        os.makedirs(extract_path, exist_ok=True)
 
         # Get the filename from the URL
         filename = url.split("/")[-1]
-
-        # Check if the file already exists in the destination folder
-        if os.path.exists(os.path.join(extract_path, filename)):
-            print(f"{filename} already exists. Skipping download.")
-            return True
+        temp_file = os.path.join(extract_path, f"temp_{filename}")
 
         # Download the ZIP file
-        logger.info(f"Downloading {filename}...")
-        response = requests.get(url)
-        response.raise_for_status()
+        if not download_file(url, temp_file):
+            return False
 
-        with zipfile.ZipFile(io.BytesIO(response.content), "r") as zip_ref:
+        # Extract the ZIP file
+        logger.info(f"Extracting {filename}...")
+        with zipfile.ZipFile(temp_file, "r") as zip_ref:
             zip_ref.extractall(extract_path)
-        logger.info(f"{filename} downloaded and extracted successfully.")
+
+        # Remove the temporary file
+        os.remove(temp_file)
+
+        logger.info(f"{filename} extracted successfully to {extract_path}")
         return True
-    except (requests.RequestException, zipfile.BadZipFile, Exception) as e:
-        logger.error(f"An error occurred: {e}")
+
+    except Exception as e:
+        logger.error(f"Error downloading or extracting ZIP file: {e}")
         return False
 
 
@@ -256,52 +325,96 @@ def check_gpu():
         return None
 
 
-def install_packages():
-    print("Install Torch")
-    packages = ["torch", "torchvision", "torchaudio"]
-    # Only use with Windows
-    if check_gpu():
-        print("GPU detected:")
-        for gpu in check_gpu():
-            print(f" - {gpu}")
-        print("Installing PyTorch with CUDA support...")
-        subprocess.run(
-            [
-                "pip",
-                "install",
-                *packages,
-                "--index-url",
-                "https://download.pytorch.org/whl/cu121",
+def install_packages(cuda_version: str = DEFAULT_CUDA_VERSION, force_cpu: bool = False) -> bool:
+    """
+    Install required packages including PyTorch.
+
+    Args:
+        cuda_version: CUDA version to use (e.g., '11.8', '12.1')
+        force_cpu: Force CPU installation even if GPU is detected
+
+    Returns:
+        bool: True if installation was successful, False otherwise
+    """
+    try:
+        # Install requests if not already installed
+        try:
+            import requests
+        except ImportError:
+            logger.info("Installing requests package...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "requests"], check=True)
+
+        # Check for GPU
+        gpus = None if force_cpu else check_gpu()
+
+        # Install PyTorch
+        logger.info("Installing PyTorch and related packages...")
+        if gpus:
+            logger.info("GPU detected:")
+            for gpu in gpus:
+                logger.info(f" - {gpu}")
+
+            # Validate CUDA version
+            if cuda_version not in CUDA_VERSIONS:
+                logger.warning(f"Unsupported CUDA version: {cuda_version}. Using default: {DEFAULT_CUDA_VERSION}")
+                cuda_version = DEFAULT_CUDA_VERSION
+
+            cuda_suffix = CUDA_VERSIONS[cuda_version]
+            logger.info(f"Installing PyTorch with CUDA {cuda_version} support...")
+
+            # Install PyTorch with CUDA support
+            cmd = [
+                sys.executable, "-m", "pip", "install",
+                *PYTORCH_VERSIONS["cuda"],
+                "--index-url", f"https://download.pytorch.org/whl/{cuda_suffix}"
             ]
-        )
-    else:
-        packages = ["torch==2.5.1", "torchvision==0.20.1", "torchaudio==2.5.1"]
-        subprocess.run(["pip", "install", *packages])
-        print("No GPU detected, installing CPU version of PyTorch...")
+            result = subprocess.run(cmd, check=True)
 
-    print("Install requirements")
-    subprocess.run(["pip", "install", "-r", "requirements.txt"])
+            if result.returncode != 0:
+                logger.error("Failed to install PyTorch with CUDA support. Falling back to CPU version.")
+                cmd = [sys.executable, "-m", "pip", "install", *PYTORCH_VERSIONS["cpu"]]
+                subprocess.run(cmd, check=True)
+        else:
+            logger.info("No GPU detected or CPU version forced. Installing CPU version of PyTorch...")
+            cmd = [sys.executable, "-m", "pip", "install", *PYTORCH_VERSIONS["cpu"]]
+            subprocess.run(cmd, check=True)
+
+        # Install other requirements
+        logger.info("Installing other requirements...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+
+        return True
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error installing packages: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error during package installation: {e}")
+        return False
 
 
-def download_model_checkpoints():
+def download_model_checkpoints(skip_download: bool = False) -> bool:
     """
     Download model checkpoints from Dropbox.
-    This function downloads the necessary model files from Dropbox
-    and places them in the correct locations.
+
+    Args:
+        skip_download: Skip downloading model checkpoints
+
+    Returns:
+        bool: True if all model files are available, False otherwise
     """
+    if skip_download:
+        logger.info("Skipping model checkpoint download as requested.")
+        return True
+
     logger.info("Checking and downloading model checkpoints from Dropbox...")
 
     # Create checkpoint directory if it doesn't exist
-    checkpoint_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "checkpoint"
-    )
+    checkpoint_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoint")
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # List of model files to download
-    model_files = [
-        "retinanet_heart.pt",
-        "NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm",
-    ]
+    model_files = list(MODEL_DOWNLOAD_URLS.keys())
 
     # Download each model file
     for model_file in model_files:
@@ -315,46 +428,9 @@ def download_model_checkpoints():
         # Get the download URL from the dictionary
         if model_file in MODEL_DOWNLOAD_URLS:
             download_url = MODEL_DOWNLOAD_URLS[model_file]
-            logger.info(f"Downloading model file: {model_file} from Dropbox...")
-
-            try:
-                # Download the file with a session to handle redirects
-                session = requests.Session()
-                response = session.get(download_url, stream=True)
-                response.raise_for_status()
-
-                # Get total file size if available
-                total_size = int(response.headers.get("content-length", 0))
-
-                # Save the file with progress reporting
-                with open(local_file_path, "wb") as f:
-                    if total_size > 0:
-                        downloaded = 0
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                # Print progress every 5%
-                                if downloaded % (total_size // 20) < 8192:
-                                    percent = (downloaded / total_size) * 100
-                                    logger.info(f"Download progress: {percent:.1f}%")
-                    else:
-                        # If content-length is not available
-                        for chunk in response.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-
-                logger.info(f"Successfully downloaded model file: {local_file_path}")
-            except Exception as e:
-                logger.error(f"Error downloading model file {model_file}: {e}")
-                logger.info(
-                    f"Please download {model_file} manually from Dropbox and place it in the checkpoint directory."
-                )
+            download_file(download_url, local_file_path)
         else:
             logger.warning(f"No download URL defined for model file: {model_file}")
-            logger.info(
-                f"Please download {model_file} manually from Dropbox and place it in the checkpoint directory."
-            )
 
     # Check if all model files were downloaded successfully
     missing_files = []
@@ -367,22 +443,99 @@ def download_model_checkpoints():
         logger.warning("Some model files could not be downloaded automatically:")
         for missing_file in missing_files:
             logger.warning(f" - {missing_file}")
-        logger.info(
-            "Please download these files manually from Dropbox and place them in the checkpoint directory."
-        )
+        logger.info("Please download these files manually from Dropbox and place them in the checkpoint directory.")
+        return False
     else:
         logger.info("All model files are available in the checkpoint directory.")
+        return True
 
 
-def main():
-    print("Installing packages...")
-    install_packages()
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command line arguments.
 
-    print("Downloading model checkpoints...")
-    download_model_checkpoints()
+    Returns:
+        argparse.Namespace: Parsed arguments
+    """
+    parser = argparse.ArgumentParser(description="Setup script for CVD Risk Estimator")
 
-    print("Setup completed successfully!")
+    parser.add_argument(
+        "--skip-packages",
+        action="store_true",
+        help="Skip package installation"
+    )
+
+    parser.add_argument(
+        "--skip-models",
+        action="store_true",
+        help="Skip model checkpoint download"
+    )
+
+    parser.add_argument(
+        "--cuda-version",
+        type=str,
+        choices=list(CUDA_VERSIONS.keys()),
+        default=DEFAULT_CUDA_VERSION,
+        help=f"CUDA version to use (default: {DEFAULT_CUDA_VERSION})"
+    )
+
+    parser.add_argument(
+        "--force-cpu",
+        action="store_true",
+        help="Force CPU installation even if GPU is detected"
+    )
+
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output"
+    )
+
+    return parser.parse_args()
+
+
+def main() -> int:
+    """
+    Main function to run the setup process.
+
+    Returns:
+        int: Exit code (0 for success, non-zero for failure)
+    """
+    # Parse command line arguments
+    args = parse_arguments()
+
+    # Set logging level based on verbosity
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+
+    # Print welcome message
+    logger.info("Starting CVD Risk Estimator setup...")
+
+    # Check Python version
+    if not check_python_version():
+        return 1
+
+    # Install packages
+    if not args.skip_packages:
+        logger.info("Installing packages...")
+        if not install_packages(args.cuda_version, args.force_cpu):
+            logger.error("Package installation failed.")
+            return 1
+    else:
+        logger.info("Skipping package installation as requested.")
+
+    # Download model checkpoints
+    if not args.skip_models:
+        logger.info("Downloading model checkpoints...")
+        if not download_model_checkpoints():
+            logger.warning("Some model checkpoints could not be downloaded.")
+            # Continue anyway, as the user might download them manually
+    else:
+        logger.info("Skipping model checkpoint download as requested.")
+
+    logger.info("Setup completed successfully!")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

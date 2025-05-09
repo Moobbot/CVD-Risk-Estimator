@@ -30,7 +30,7 @@ pip install python-dotenv
 - `HOST_CONNECT`: Host IP address to bind the server
   - Default: `0.0.0.0` (all interfaces)
 - `PORT`: Port number for the server
-  - Default: `8080`
+  - Default: `5556`
 
 ### File Configuration
 
@@ -84,7 +84,7 @@ ENV=dev
 
 # Server Configuration
 HOST_CONNECT=0.0.0.0
-PORT=8080
+PORT=5556
 
 # File Configuration
 # 100MB in bytes
@@ -127,10 +127,10 @@ When adding comments to your environment variables, make sure to place them on a
 ```plaintext
 # Correct: Comment on a separate line
 # This is the port number
-PORT=8080
+PORT=5556
 
 # Incorrect: Comment on the same line
-PORT=8080  # This is the port number
+PORT=5556  # This is the port number
 ```
 
 This is because when the environment variables are loaded, any text after the value (including comments) will be considered part of the value, which can cause parsing errors.

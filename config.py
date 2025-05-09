@@ -23,7 +23,7 @@ IS_DEV = ENV == "dev"
 
 # Server Configuration
 HOST_CONNECT = os.getenv("HOST_CONNECT", "0.0.0.0")  # Run on all IP addresses
-PORT_CONNECT = int(os.getenv("PORT", 8080))  # Default port is 8080
+PORT_CONNECT = int(os.getenv("PORT", 5556))  # Default port is 5556
 
 # API Configuration
 API_TITLE = "CVD Risk Prediction API"
