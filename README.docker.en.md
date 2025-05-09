@@ -41,7 +41,7 @@ docker-compose down
 
 ```bash
 # Use the CPU service in docker-compose.yml
-docker-compose up -d cvd-risk-estimator-cpu
+docker-compose up -d app-cpu
 
 # View logs
 docker-compose logs -f cvd-risk-estimator-cpu
@@ -127,11 +127,22 @@ If you encounter GPU-related errors, ensure:
 2. NVIDIA drivers are installed and working
 3. Check with the `nvidia-smi` command
 
+The Docker Compose file has been configured to properly access the GPU using the modern Docker Compose format:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
 If you still have issues, you can switch to CPU mode by:
 
-1. Using the CPU-specific Docker Compose file: `docker-compose -f docker-compose.cpu.yml up -d`
-2. Or building with Dockerfile.cpu: `docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .`
-3. Or setting `DEVICE=cpu` in the environment variables when running an existing container
+1. Using the CPU service in docker-compose.yml: `docker-compose up -d app-cpu`
+2. Or setting `DEVICE=cpu` in the environment variables when running an existing container
 
 Note that CPU mode will be significantly slower for inference but allows the application to run on any machine without GPU requirements.
 

@@ -4,6 +4,13 @@ services:
     build: .
     container_name: cvd-risk-estimator
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     ports:
       - "5556:5556"
     volumes:
@@ -18,4 +25,25 @@ services:
       - PORT=5556
       - DEVICE=cuda
       - CUDA_VISIBLE_DEVICES=0
+      - PYTHONUNBUFFERED=1
+
+  # CPU version (fallback)
+  app-cpu:
+    build: .
+    container_name: cvd-risk-estimator-cpu
+    restart: unless-stopped
+    ports:
+      - "5557:5556"
+    volumes:
+      - ./checkpoint:/app/checkpoint
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+      - ./.env:/app/.env
+    environment:
+      - ENV=dev
+      - HOST_CONNECT=0.0.0.0
+      - PORT=5556
+      - DEVICE=cpu
+      - CUDA_VISIBLE_DEVICES=
       - PYTHONUNBUFFERED=1

@@ -41,7 +41,7 @@ docker-compose down
 
 ```bash
 # Sử dụng dịch vụ CPU trong docker-compose.yml
-docker-compose up -d cvd-risk-estimator-cpu
+docker-compose up -d app-cpu
 
 # Xem logs
 docker-compose logs -f cvd-risk-estimator-cpu
@@ -126,11 +126,22 @@ Nếu bạn gặp lỗi liên quan đến GPU, hãy đảm bảo:
 2. Driver NVIDIA đã được cài đặt và hoạt động
 3. Kiểm tra với lệnh `nvidia-smi`
 
+File Docker Compose đã được cấu hình để truy cập GPU đúng cách sử dụng định dạng Docker Compose hiện đại:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
 Nếu vẫn gặp vấn đề, bạn có thể chuyển sang chế độ CPU bằng cách:
 
-1. Sử dụng file Docker Compose dành riêng cho CPU: `docker-compose -f docker-compose.cpu.yml up -d`
-2. Hoặc xây dựng với Dockerfile.cpu: `docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .`
-3. Hoặc đặt `DEVICE=cpu` trong biến môi trường khi chạy container đã tồn tại
+1. Sử dụng dịch vụ CPU trong docker-compose.yml: `docker-compose up -d app-cpu`
+2. Hoặc đặt `DEVICE=cpu` trong biến môi trường khi chạy container đã tồn tại
 
 Lưu ý rằng chế độ CPU sẽ chậm hơn đáng kể cho việc suy luận nhưng cho phép ứng dụng chạy trên bất kỳ máy nào mà không cần GPU.
 
