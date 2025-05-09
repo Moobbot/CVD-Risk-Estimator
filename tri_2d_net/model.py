@@ -2,7 +2,7 @@
 # @Author  : chq_N
 # @Time    : 2020/8/29
 
-import os.path as osp
+import os
 import sys
 from datetime import datetime
 
@@ -16,31 +16,36 @@ import torch.optim as optim
 import torch.utils.data as tordata
 from mpl_toolkits.axes_grid1 import ImageGrid
 from scipy.ndimage import gaussian_filter
+
 # from apex import amp
 from scipy.special import softmax
 from skimage.transform import resize as imresize
 
-from data import SoftmaxSampler
-from net import Tri2DNet, Branch
-from visualization import GradCam
+sys.path.append("./")
+
+from tri_2d_net.data import SoftmaxSampler
+from tri_2d_net.net import Tri2DNet, Branch
+from tri_2d_net.visualization import GradCam
 
 
 class Model:
     def __init__(
-            self,
-            dout,
-            lr,
-            num_workers,
-            batch_size,
-            restore_iter,
-            total_iter,
-            save_name,
-            model_name,
-            train_source,
-            val_source,
-            test_source,
-            accumulate_steps,
-            prt_path, ):
+        self,
+        dout,
+        lr,
+        num_workers,
+        batch_size,
+        restore_iter,
+        total_iter,
+        save_name,
+        model_name,
+        train_source,
+        val_source,
+        test_source,
+        accumulate_steps,
+        prt_path,
+        device="cuda",
+    ):
 
         self.dout = dout
         self.lr = lr
@@ -55,9 +60,16 @@ class Model:
         self.test_source = test_source
         self.accumulate_steps = accumulate_steps
         self.prt_path = prt_path
+        self.device = device
 
-        encoder = Tri2DNet(dout=self.dout).cuda()
-        ce = nn.CrossEntropyLoss(reduction='none').cuda()
+        # Create device object
+        self.device_obj = torch.device(self.device)
+        print(f"Model using device: {self.device_obj}")
+
+        # Initialize model with the specified device
+        encoder = Tri2DNet(dout=self.dout)
+        encoder = encoder.to(self.device_obj)
+        ce = nn.CrossEntropyLoss(reduction="none").to(self.device_obj)
 
         att_id = []
         aux_id = []
@@ -66,19 +78,14 @@ class Model:
                 att_id += list(map(id, m.att_branch.parameters()))
                 aux_id += list(map(id, m.aux.parameters()))
         pretrained_params = filter(
-            lambda p: id(p) not in att_id + aux_id,
-            encoder.parameters())
-        aux_params = filter(
-            lambda p: id(p) in aux_id,
-            encoder.parameters())
-        att_params = filter(
-            lambda p: id(p) in att_id,
-            encoder.parameters())
+            lambda p: id(p) not in att_id + aux_id, encoder.parameters())
+        aux_params = filter(lambda p: id(p) in aux_id, encoder.parameters())
+        att_params = filter(lambda p: id(p) in att_id, encoder.parameters())
         optimizer = optim.Adam([
-            {'params': pretrained_params, 'lr': self.lr / 10},
-            {'params': aux_params, 'lr': self.lr / 5},
-            {'params': att_params, 'lr': self.lr},
-        ], lr=self.lr)
+                {"params": pretrained_params, "lr": self.lr / 10},
+                {"params": aux_params, "lr": self.lr / 5},
+                {"params": att_params, "lr": self.lr},
+            ], lr=self.lr)
 
         models = [encoder, ce]
         # models, optimizer = amp.initialize(models, optimizer, opt_level="O1")
@@ -117,8 +124,7 @@ class Model:
             self.restore_iter += 1
             self.optimizer.zero_grad()
 
-            (pred, aux_pred_sagittal, aux_pred_coronal,
-             aux_pred_axial) = self.encoder(volumes.cuda())
+            (pred, aux_pred_sagittal, aux_pred_coronal, aux_pred_axial) = self.encoder(volumes.cuda())
 
             labels = (labels > 0).int()
             main_ce_loss = self.ce(pred, labels.cuda().long()).mean()
@@ -147,14 +153,15 @@ class Model:
                 print(datetime.now() - _time1)
                 _time1 = datetime.now()
                 self.save_model()
-                print('iter {}:'.format(self.restore_iter), end='')
-                print(', loss={0:.8f}'.format(np.mean(self.loss)), end='')
-                print(', m_loss={0:.8f}'.format(np.mean(self.m_loss)), end='')
-                print(', sa_loss={0:.8f}'.format(np.mean(self.sa_loss)), end='')
-                print(', co_loss={0:.8f}'.format(np.mean(self.co_loss)), end='')
-                print(', ax_loss={0:.8f}'.format(np.mean(self.ax_loss)), end='')
-                print(', lr=', end='')
-                print([self.optimizer.param_groups[i]['lr'] for i in range(len(self.optimizer.param_groups))])
+                print("iter {}:".format(self.restore_iter), end="")
+                print(", loss={0:.8f}".format(np.mean(self.loss)), end="")
+                print(", m_loss={0:.8f}".format(np.mean(self.m_loss)), end="")
+                print(", sa_loss={0:.8f}".format(np.mean(self.sa_loss)), end="")
+                print(", co_loss={0:.8f}".format(np.mean(self.co_loss)), end="")
+                print(", ax_loss={0:.8f}".format(np.mean(self.ax_loss)), end="")
+                print(", lr=", end="")
+                print([self.optimizer.param_groups[i]["lr"]
+                        for i in range(len(self.optimizer.param_groups))])
                 sys.stdout.flush()
 
                 self.LOSS.append(np.mean(self.loss))
@@ -169,13 +176,13 @@ class Model:
                 plt.plot(self.LOSS)
                 plt.show()
 
-    def aug_test(self, subset='test', batch_size=1):
+    def aug_test(self, subset="test", batch_size=1):
         self.encoder.eval()
-        assert subset in ['train', 'val', 'test']
+        assert subset in ["train", "val", "test"]
         source = self.test_source
-        if subset == 'train':
+        if subset == "train":
             source = self.train_source
-        elif subset == 'val':
+        elif subset == "val":
             source = self.val_source
         data_loader = tordata.DataLoader(
             dataset=source,
@@ -207,10 +214,9 @@ class Model:
                     s = _c[0]
                     h = _c[1]
                     w = _c[2]
-                    _v.append(volumes[:, :, s:s + 112, h:h + 112, w:w + 112])
+                    _v.append(volumes[:, :, s : s + 112, h : h + 112, w : w + 112])
                 _v = torch.cat(_v, 0).contiguous()
-                (pred, aux_pred_sagittal, aux_pred_coronal,
-                 aux_pred_axial) = self.encoder(_v)
+                (pred, aux_pred_sagittal, aux_pred_coronal, aux_pred_axial) = self.encoder(_v)
                 pred = pred.view(len(crop), b_s, 2)
                 pred_prob = softmax(pred.data.cpu().numpy(), axis=2).mean(axis=0)
                 pred_list.append(pred_prob)
@@ -223,7 +229,7 @@ class Model:
 
     def aug_transform(self, volumes):
         if isinstance(volumes, np.ndarray):
-            volumes = torch.from_numpy(volumes)
+            volumes = torch.from_numpy(volumes).float()
         self.encoder.eval()
 
         crop = []
@@ -239,38 +245,28 @@ class Model:
         get_crop([])
 
         with torch.no_grad():
-            volumes = volumes.cuda()
+            volumes = volumes.to(self.device_obj)
             volumes = volumes.unsqueeze(0)
             _v = []
             for _c in crop:
                 s = _c[0]
                 h = _c[1]
                 w = _c[2]
-                _v.append(volumes[:, :, s:s + 112, h:h + 112, w:w + 112])
+                _v.append(volumes[:, :, s : s + 112, h : h + 112, w : w + 112])
             _v = torch.cat(_v, 0).contiguous()
-            (pred, aux_pred_sagittal, aux_pred_coronal,
-             aux_pred_axial) = self.encoder(_v)
+            (pred, aux_pred_sagittal, aux_pred_coronal, aux_pred_axial) = self.encoder(_v)
             pred = pred.view(len(crop), 2)
             pred_prob = softmax(pred.data.cpu().numpy(), axis=1).mean(axis=0)
 
         return pred_prob
 
-    def grad_cam_visual(self, volumes):
+    def grad_cam_visual(self, volumes, output_folder=None):
         if isinstance(volumes, np.ndarray):
-            volumes = torch.from_numpy(volumes)
+            volumes = torch.from_numpy(volumes).float()
         self.encoder.eval()
-        grad_cam = GradCam(self.encoder)
+        grad_cam = GradCam(self.encoder, device=self.device_obj)
 
         color = cv2.COLORMAP_JET
-        color_sample = np.asarray(list(range(0, 10)) * 3).reshape(3, 10)
-        color_sample = imresize(color_sample.astype('float'), (12, 128))
-        color_sample = color_sample / 10
-        color_sample = cv2.applyColorMap(np.uint8(255 * color_sample), color)
-        color_sample = cv2.cvtColor(color_sample,cv2.COLOR_BGR2RGB)
-        plt.imshow(color_sample)
-        plt.yticks(np.arange(0))
-        plt.xticks(np.arange(-1, 128, 32), [0, 0.25, 0.5, 0.75, 1.0])
-        plt.show()
 
         def show_cam_on_image(img, mask):
             img = np.float32(img) / 255
@@ -291,16 +287,14 @@ class Model:
 
         volumes = volumes.unsqueeze(0)
         grad_cam.model.zero_grad()
-        pred = grad_cam(volumes.cuda())
+        pred = grad_cam(volumes.to(self.device_obj))
         one_hot = torch.zeros(pred.size())
         one_hot[:, 1] = 1
-        one_hot = one_hot.cuda().float()
+        one_hot = one_hot.to(self.device_obj).float()
         y = (one_hot * pred).sum()
         y.backward()
 
-        (axial_output, coronal_output, sagittal_output,
-         axial_grad, coronal_grad, sagittal_grad,
-         ) = grad_cam.get_intermediate_data()
+        (axial_output, coronal_output, sagittal_output, axial_grad, coronal_grad, sagittal_grad) = grad_cam.get_intermediate_data()
         # axial: d, h, w
         axial_cam = v_2D(axial_output, axial_grad[0])
         axial_cam = gaussian_filter(axial_cam, sigma=(3, 0, 0))
@@ -314,40 +308,74 @@ class Model:
         sagittal_cam = gaussian_filter(sagittal_cam, sigma=(0, 0, 3))
 
         cam_combine = axial_cam + coronal_cam + sagittal_cam
-        cam_combine = (cam_combine - cam_combine.min()) / (cam_combine.max() - cam_combine.min() + 1e-9)
+        cam_combine = (cam_combine - cam_combine.min()) / \
+            (cam_combine.max() - cam_combine.min() + 1e-9)
 
-        _v = volumes.data.numpy()[0][0]
-        total_img_num = _v.shape[0]
-        fig = plt.figure(figsize=(15, 240))
-        grid = ImageGrid(fig, 111, nrows_ncols=(32, 2), axes_pad=0.05)
-        for i in range(64):
-            frame_dix = i * int(total_img_num / 64)
-            org_img = cv2.cvtColor(np.uint8(255 * _v[frame_dix].reshape(128, 128)), cv2.COLOR_GRAY2BGR)
-            merged = show_cam_on_image(org_img, cam_combine[frame_dix])
-            coupled = np.concatenate([org_img, merged], axis=1)
-            coupled = cv2.cvtColor(coupled, cv2.COLOR_BGR2RGB)
-            grid[i].imshow(coupled)
-        plt.show()
+        # Save visualizations of the processed and resized CAM on the 128x128x128 volume
+        if output_folder is not None:
+            _v = volumes.data.numpy()[0][0]
+            total_img_num = _v.shape[0]
+            os.makedirs(output_folder, exist_ok=True)
+            for frame_dix in range(total_img_num):
+                org_img = cv2.cvtColor(
+                    np.uint8(255 * _v[frame_dix].reshape(128, 128)), cv2.COLOR_GRAY2BGR)
+                merged = show_cam_on_image(org_img, cam_combine[frame_dix])
+                merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
+                output_path = os.path.join(
+                    output_folder, f"slice_{frame_dix}.png")
+                plt.imsave(output_path, merged)
 
+        # Return the combined CAM data for overlaying on original images
+        return cam_combine
     def save_model(self):
-        torch.save(self.encoder.state_dict(), osp.join(
-            'checkpoint',
-            '{}-{:0>5}-encoder.ptm'.format(self.save_name, self.restore_iter)))
-        torch.save(self.optimizer.state_dict(), osp.join(
-            'checkpoint',
-            '{}-{:0>5}-optimizer.ptm'.format(self.save_name, self.restore_iter)))
+        torch.save(
+            self.encoder.state_dict(),
+            os.path.join(
+                "checkpoint",
+                "{}-{:0>5}-encoder.ptm".format(self.save_name, self.restore_iter),
+            ),
+        )
+        torch.save(
+            self.optimizer.state_dict(),
+            os.path.join(
+                "checkpoint",
+                "{}-{:0>5}-optimizer.ptm".format(self.save_name, self.restore_iter),
+            ),
+        )
 
     def load_model(self, restore_iter=None):
         if restore_iter is None:
             restore_iter = self.restore_iter
-        self.encoder.load_state_dict(torch.load(osp.join(
-            'checkpoint',
-            '{}-{:0>5}-encoder.ptm'.format(self.save_name, restore_iter))))
-        opt_path = osp.join(
-            'checkpoint',
-            '{}-{:0>5}-optimizer.ptm'.format(self.save_name, restore_iter))
-        if osp.isfile(opt_path):
-            self.optimizer.load_state_dict(torch.load(opt_path))
+
+        checkpoint_path = os.path.join(
+            "checkpoint",
+            "{}-{:0>5}-encoder.ptm".format(self.save_name, restore_iter),
+        )
+
+        # Load model with appropriate device mapping
+        self.encoder.load_state_dict(
+            torch.load(
+                checkpoint_path,
+                map_location=self.device_obj,
+                weights_only=False
+            )
+        )
+
+        opt_path = os.path.join(
+            "checkpoint",
+            "{}-{:0>5}-optimizer.ptm".format(self.save_name, restore_iter)
+        )
+
+        if os.path.isfile(opt_path):
+            self.optimizer.load_state_dict(
+                torch.load(opt_path, map_location=self.device_obj)
+            )
+
+        print(f"Model loaded successfully from {checkpoint_path} to {self.device}")
 
     def load_pretrain(self):
-        self.encoder.load_state_dict(torch.load(self.prt_path), False)
+        print(f"Loading pretrained model from {self.prt_path} to {self.device}")
+        self.encoder.load_state_dict(
+            torch.load(self.prt_path, map_location=self.device_obj),
+            False
+        )

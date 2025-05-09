@@ -1,0 +1,23 @@
+# Core dependencies
+numpy
+opencv-python
+matplotlib
+scipy
+scikit-image
+requests
+tqdm
+pillow
+pandas
+SimpleITK
+pydicom
+psutil
+
+# API dependencies
+flask
+fastapi
+uvicorn
+python-multipart
+python-jose
+passlib
+python-dotenv
+# Note: PyTorch and torchvision are installed via setup.py

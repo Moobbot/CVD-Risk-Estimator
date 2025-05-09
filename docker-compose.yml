@@ -1,0 +1,21 @@
+services:
+  # GPU version (default)
+  app:
+    build: .
+    container_name: cvd-risk-estimator
+    restart: unless-stopped
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./checkpoint:/app/checkpoint
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+      - ./.env:/app/.env
+    environment:
+      - ENV=dev
+      - HOST_CONNECT=0.0.0.0
+      - PORT=5556
+      - DEVICE=cuda
+      - CUDA_VISIBLE_DEVICES=0
+      - PYTHONUNBUFFERED=1
