@@ -88,6 +88,23 @@ All configuration options have default values defined directly in `config.py`. Y
 - `LOG_BACKUP_COUNT`: Number of backup log files to keep
   - Default: `5`
 
+The application uses a date-based logging system that automatically organizes logs by year and month in the following structure:
+
+```plaintext
+logs/
+├── 2023/
+│   ├── 01/
+│   │   ├── api_2023-01-01.log
+│   │   ├── api_2023-01-02.log
+│   │   └── ...
+│   ├── 02/
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+This organization makes it easy to find logs for specific dates and prevents log files from growing too large. The application automatically creates new log files for each day and rotates them when they exceed the configured size limit.
+
 ### Cleanup Configuration
 
 - `CLEANUP_ENABLED`: Enable automatic cleanup of old files

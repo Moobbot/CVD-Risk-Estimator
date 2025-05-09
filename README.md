@@ -8,11 +8,14 @@ API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net
 - Detect heart region using RetinaNet or simple method
 - Predict CVD risk using Tri2D-Net model
 - Generate Grad-CAM visualizations for explainability
-- Create animated GIFs from Grad-CAM visualizations
+- Create animated GIFs from Grad-CAM visualizations directly during image processing
 - Attention score calculation for important slices
 - Environment variable configuration for easy deployment
 - Unicode support for logging in multiple languages
+- Date-based log organization with automatic rotation
 - Automatic CPU fallback when GPU is not available
+- Docker containerization with GPU and CPU support
+- Optimized model loading during application startup
 
 ## Installation
 
@@ -156,7 +159,7 @@ Download the ZIP file containing overlay images with Grad-CAM visualizations.
 
 ### GET /download_gif/{session_id}
 
-Download an animated GIF of the Grad-CAM visualizations.
+Download an animated GIF of the Grad-CAM visualizations. The GIF is created directly during the Grad-CAM visualization process for improved performance and is stored in the session-specific folder.
 
 **Parameters:**
 
@@ -165,6 +168,8 @@ Download an animated GIF of the Grad-CAM visualizations.
 **Response:**
 
 - GIF file containing animated Grad-CAM visualizations
+
+**Note:** The GIF is automatically included in the ZIP archive downloaded from `/download_zip/{session_id}`.
 
 ### GET /preview/{session_id}/{filename}
 
@@ -252,15 +257,20 @@ CVD-Risk-Estimator/
 ├── tri_2d_net/           # Tri2D-Net model implementation
 ├── checkpoint/           # Model checkpoints
 ├── config.py             # Configuration with built-in defaults
-├── logger.py             # Logging configuration
+├── logger.py             # Logging configuration with date-based organization
+├── setup.py              # Installation and dependency setup
 ├── requirements.txt      # Project dependencies
 ├── .env.example          # Environment variables template
 ├── .env                  # Optional environment variables (local)
 ├── ENV_README.md         # Configuration documentation
 ├── README.md             # This file
+├── README.docker.md      # Docker documentation (Vietnamese)
+├── README.docker.en.md   # Docker documentation (English)
+├── Dockerfile            # Docker configuration
+├── docker-compose.yml    # Docker Compose configuration
 ├── uploads/              # Temporary upload directory
 ├── results/              # Results and visualizations
-└── logs/                 # Application logs
+└── logs/                 # Application logs with date-based organization
 ```
 
 ## Error Handling
@@ -281,12 +291,33 @@ The application includes robust error handling for various scenarios:
 
 ## Logging
 
-Logs are stored in the `logs` directory with UTF-8 encoding to support multiple languages. The log format is:
+Logs are stored in the `logs` directory with UTF-8 encoding to support multiple languages. The logs are organized by date in a year/month directory structure, with automatic rotation when files exceed the configured size limit.
+
+The log format is:
 
 ```log
 2023-01-01 12:00:00,000 - api - INFO - Loading models on application startup...
 2023-01-01 12:00:01,000 - api - ERROR - Error during processing: Could not detect heart
 ```
+
+### Log Organization
+
+Logs are automatically organized in the following structure:
+
+```plaintext
+logs/
+├── 2023/
+│   ├── 01/
+│   │   ├── api_2023-01-01.log
+│   │   ├── api_2023-01-02.log
+│   │   └── ...
+│   ├── 02/
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+This organization makes it easy to find logs for specific dates and prevents log files from growing too large. The application automatically creates new log files for each day and rotates them when they exceed the configured size limit.
 
 ## Model Loading Optimization
 
@@ -324,6 +355,60 @@ DEVICE=cuda python api.py
 ## Unicode Support
 
 The application supports Unicode characters in logs and messages, making it suitable for use in multiple languages.
+
+## Docker Deployment
+
+The application can be deployed using Docker with support for both GPU and CPU environments. For detailed instructions, see the [README.docker.en.md](README.docker.en.md) file (or [README.docker.md](README.docker.md) for Vietnamese).
+
+### Quick Start with Docker Compose
+
+#### With GPU
+
+```bash
+# Build and start the container with GPU
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the container
+docker-compose down
+```
+
+#### Without GPU
+
+```bash
+# Use the CPU service in docker-compose.yml
+docker-compose up -d cvd-risk-estimator-cpu
+
+# View logs
+docker-compose logs -f cvd-risk-estimator-cpu
+
+# Stop the container
+docker-compose down
+```
+
+### Docker Configuration
+
+The Docker configuration includes:
+
+- Python 3.10 base image
+- Required system libraries (ffmpeg, libsm6, libxext6)
+- Virtual environment for clean dependency management
+- Optimized image size using multi-stage builds
+- Non-root user for improved security
+- Volume mounts for persistent data storage
+- Environment variable configuration
+
+### Docker Volumes
+
+The following volumes are used to store data between container runs:
+
+- `./checkpoint:/app/checkpoint`: Stores downloaded models
+- `./logs:/app/logs`: Stores application logs
+- `./uploads:/app/uploads`: Stores temporary uploaded files
+- `./results:/app/results`: Stores prediction results
+- `./.env:/app/.env`: Environment configuration file
 
 ## Contributing
 

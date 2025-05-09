@@ -2,6 +2,16 @@
 
 This document provides instructions on how to use Docker to deploy the CVD Risk Estimator application in both GPU and non-GPU environments.
 
+## Key Features
+
+- Predict cardiovascular disease risk from DICOM images
+- Detect heart region automatically using RetinaNet or simple method
+- Generate Grad-CAM visualizations for explainability
+- Create animated GIFs directly from Grad-CAM visualizations
+- Organize logs in a year/month/day structure
+- Automatically fall back to CPU mode when GPU is not available
+- Optimize model loading during application startup
+
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/)
@@ -85,10 +95,27 @@ environment:
 The following volumes are used to store data between container runs:
 
 - `./checkpoint:/app/checkpoint`: Stores downloaded models
-- `./logs:/app/logs`: Stores application logs
+- `./logs:/app/logs`: Stores application logs (organized by year/month/day)
 - `./uploads:/app/uploads`: Stores temporary uploaded files
-- `./results:/app/results`: Stores prediction results
+- `./results:/app/results`: Stores prediction results and GIF files
 - `./.env:/app/.env`: Environment configuration file
+
+#### Log Organization
+
+Logs are automatically organized in a year/month structure with date-based filenames:
+
+```plaintext
+logs/
+├── 2023/
+│   ├── 01/
+│   │   ├── api_2023-01-01.log
+│   │   ├── api_2023-01-02.log
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+This organization makes it easy to find logs for specific dates and prevents log files from growing too large.
 
 ## Troubleshooting
 

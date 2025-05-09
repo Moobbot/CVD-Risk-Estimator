@@ -2,6 +2,16 @@
 
 Tài liệu này hướng dẫn cách sử dụng Docker để triển khai ứng dụng CVD Risk Estimator trong cả môi trường có GPU và không có GPU.
 
+## Tính năng chính
+
+- Dự đoán nguy cơ bệnh tim mạch từ ảnh DICOM
+- Phát hiện vùng tim tự động bằng RetinaNet hoặc phương pháp đơn giản
+- Tạo hình ảnh Grad-CAM để giải thích kết quả
+- Tạo GIF động trực tiếp từ các hình ảnh Grad-CAM
+- Tổ chức logs theo cấu trúc năm/tháng/ngày
+- Tự động chuyển sang chế độ CPU khi không có GPU
+- Tối ưu hóa việc tải mô hình trong quá trình khởi động
+
 ## Yêu cầu
 
 - [Docker](https://docs.docker.com/get-docker/)
@@ -84,10 +94,27 @@ environment:
 Các volume sau được sử dụng để lưu trữ dữ liệu giữa các lần chạy container:
 
 - `./checkpoint:/app/checkpoint`: Lưu trữ các mô hình đã tải xuống
-- `./logs:/app/logs`: Lưu trữ logs của ứng dụng
+- `./logs:/app/logs`: Lưu trữ logs của ứng dụng (được tổ chức theo năm/tháng/ngày)
 - `./uploads:/app/uploads`: Lưu trữ các file tải lên tạm thời
-- `./results:/app/results`: Lưu trữ kết quả dự đoán
+- `./results:/app/results`: Lưu trữ kết quả dự đoán và file GIF
 - `./.env:/app/.env`: File cấu hình môi trường
+
+#### Tổ chức logs
+
+Logs được tự động tổ chức theo cấu trúc năm/tháng với tên file dựa trên ngày:
+
+```plaintext
+logs/
+├── 2023/
+│   ├── 01/
+│   │   ├── api_2023-01-01.log
+│   │   ├── api_2023-01-02.log
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+Cấu trúc này giúp dễ dàng tìm kiếm logs cho các ngày cụ thể và ngăn các file log trở nên quá lớn.
 
 ## Xử lý sự cố
 
