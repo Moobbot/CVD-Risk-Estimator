@@ -379,7 +379,7 @@ docker-compose down
 
 ```bash
 # Use the CPU service in docker-compose.yml
-docker-compose up -d cvd-risk-estimator-cpu
+docker-compose up -d app-cpu
 
 # View logs
 docker-compose logs -f cvd-risk-estimator-cpu
@@ -399,6 +399,27 @@ The Docker configuration includes:
 - Non-root user for improved security
 - Volume mounts for persistent data storage
 - Environment variable configuration
+- GPU support using NVIDIA Container Toolkit
+
+#### GPU Configuration
+
+The Docker Compose file is configured to properly access the GPU using the modern Docker Compose format:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+This configuration requires:
+
+- Docker Compose v2 or newer
+- NVIDIA Container Toolkit installed
+- NVIDIA drivers installed and working
 
 ### Docker Volumes
 
