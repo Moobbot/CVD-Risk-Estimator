@@ -30,17 +30,15 @@ docker-compose down
 #### Without GPU
 
 ```bash
-# Use the special docker-compose.cpu.yml file for non-GPU environments
-docker-compose -f docker-compose.cpu.yml up -d
+# Use the CPU service in docker-compose.yml
+docker-compose up -d cvd-risk-estimator-cpu
 
 # View logs
-docker-compose -f docker-compose.cpu.yml logs -f
+docker-compose logs -f cvd-risk-estimator-cpu
 
 # Stop the container
-docker-compose -f docker-compose.cpu.yml down
+docker-compose down
 ```
-
-> **Note**: The CPU version uses a separate Dockerfile.cpu that has been optimized for non-GPU environments.
 
 ### 2. Build and Run with Docker
 
@@ -49,21 +47,21 @@ If you don't use Docker Compose, you can use Docker commands directly:
 #### Using GPU
 
 ```bash
-# Build the image for GPU
-docker build --build-arg USE_GPU=true -t cvd-risk-estimator-gpu .
+# Build the image
+docker build -t cvd-risk-estimator .
 
 # Run the container with GPU
-docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-gpu
+docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator
 ```
 
 #### Using CPU
 
 ```bash
-# Build the image for CPU using Dockerfile.cpu
-docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .
+# Build the image (same image as GPU)
+docker build -t cvd-risk-estimator .
 
-# Run the container with CPU
-docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-cpu
+# Run the container with CPU (specify DEVICE=cpu environment variable)
+docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env -e DEVICE=cpu -e CUDA_VISIBLE_DEVICES= --name cvd-risk-estimator-cpu -d cvd-risk-estimator
 ```
 
 ## Configuration
@@ -121,11 +119,20 @@ If you encounter errors when loading models, ensure:
 
 ### Reducing Image Size
 
-To reduce Docker image size, you can:
+The Dockerfile has been optimized to reduce image size by:
 
-1. Add large files to `.dockerignore`
-2. Use multi-stage builds
-3. Clean up unnecessary packages after installation
+1. Using multi-stage builds to separate build and runtime environments
+2. Using slim base images to reduce size
+3. Installing only necessary packages and cleaning apt cache after installation
+4. Adding large files to `.dockerignore`
+
+### Security
+
+The application has improved security by:
+
+1. Running the application as a non-root user (appuser)
+2. Installing only necessary packages for runtime
+3. Using minimal permissions for directories
 
 ### Improving Performance
 
@@ -141,4 +148,3 @@ When deploying in a production environment, ensure:
 1. Set `ENV=prod` to disable debug features
 2. Configure `CORS_ORIGINS` to only allow trusted origins
 3. Use a reverse proxy like Nginx to handle HTTPS and load balancing
-4. Set up monitoring and alerts

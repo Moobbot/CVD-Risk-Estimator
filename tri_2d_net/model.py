@@ -44,6 +44,7 @@ class Model:
         test_source,
         accumulate_steps,
         prt_path,
+        device="cuda",
     ):
 
         self.dout = dout
@@ -59,9 +60,16 @@ class Model:
         self.test_source = test_source
         self.accumulate_steps = accumulate_steps
         self.prt_path = prt_path
+        self.device = device
 
-        encoder = Tri2DNet(dout=self.dout).cuda()
-        ce = nn.CrossEntropyLoss(reduction="none").cuda()
+        # Create device object
+        self.device_obj = torch.device(self.device)
+        print(f"Model using device: {self.device_obj}")
+
+        # Initialize model with the specified device
+        encoder = Tri2DNet(dout=self.dout)
+        encoder = encoder.to(self.device_obj)
+        ce = nn.CrossEntropyLoss(reduction="none").to(self.device_obj)
 
         att_id = []
         aux_id = []
@@ -221,7 +229,7 @@ class Model:
 
     def aug_transform(self, volumes):
         if isinstance(volumes, np.ndarray):
-            volumes = torch.from_numpy(volumes)
+            volumes = torch.from_numpy(volumes).float()
         self.encoder.eval()
 
         crop = []
@@ -237,7 +245,7 @@ class Model:
         get_crop([])
 
         with torch.no_grad():
-            volumes = volumes.cuda()
+            volumes = volumes.to(self.device_obj)
             volumes = volumes.unsqueeze(0)
             _v = []
             for _c in crop:
@@ -254,9 +262,9 @@ class Model:
 
     def grad_cam_visual(self, volumes, output_folder=None):
         if isinstance(volumes, np.ndarray):
-            volumes = torch.from_numpy(volumes)
+            volumes = torch.from_numpy(volumes).float()
         self.encoder.eval()
-        grad_cam = GradCam(self.encoder)
+        grad_cam = GradCam(self.encoder, device=self.device_obj)
 
         color = cv2.COLORMAP_JET
 
@@ -279,10 +287,10 @@ class Model:
 
         volumes = volumes.unsqueeze(0)
         grad_cam.model.zero_grad()
-        pred = grad_cam(volumes.cuda())
+        pred = grad_cam(volumes.to(self.device_obj))
         one_hot = torch.zeros(pred.size())
         one_hot[:, 1] = 1
-        one_hot = one_hot.cuda().float()
+        one_hot = one_hot.to(self.device_obj).float()
         y = (one_hot * pred).sum()
         y.backward()
 
@@ -314,9 +322,9 @@ class Model:
                 merged = show_cam_on_image(org_img, cam_combine[frame_dix])
                 merged = cv2.cvtColor(merged, cv2.COLOR_BGR2RGB)
                 output_path = os.path.join(
-                    output_folder, f"slice_{frame_dix}.png") 
+                    output_folder, f"slice_{frame_dix}.png")
                 plt.imsave(output_path, merged)
-            
+
         # Return the combined CAM data for overlaying on original images
         return cam_combine
     def save_model(self):
@@ -338,21 +346,36 @@ class Model:
     def load_model(self, restore_iter=None):
         if restore_iter is None:
             restore_iter = self.restore_iter
+
+        checkpoint_path = os.path.join(
+            "checkpoint",
+            "{}-{:0>5}-encoder.ptm".format(self.save_name, restore_iter),
+        )
+
+        # Load model with appropriate device mapping
         self.encoder.load_state_dict(
             torch.load(
-                os.path.join(
-                    "checkpoint",
-                    "{}-{:0>5}-encoder.ptm".format(self.save_name, restore_iter),
-                ),
+                checkpoint_path,
+                map_location=self.device_obj,
                 weights_only=False
             )
         )
+
         opt_path = os.path.join(
             "checkpoint",
             "{}-{:0>5}-optimizer.ptm".format(self.save_name, restore_iter)
         )
+
         if os.path.isfile(opt_path):
-            self.optimizer.load_state_dict(torch.load(opt_path))
+            self.optimizer.load_state_dict(
+                torch.load(opt_path, map_location=self.device_obj)
+            )
+
+        print(f"Model loaded successfully from {checkpoint_path} to {self.device}")
 
     def load_pretrain(self):
-        self.encoder.load_state_dict(torch.load(self.prt_path), False)
+        print(f"Loading pretrained model from {self.prt_path} to {self.device}")
+        self.encoder.load_state_dict(
+            torch.load(self.prt_path, map_location=self.device_obj),
+            False
+        )

@@ -12,6 +12,7 @@ API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net
 - Attention score calculation for important slices
 - Environment variable configuration for easy deployment
 - Unicode support for logging in multiple languages
+- Automatic CPU fallback when GPU is not available
 
 ## Installation
 
@@ -40,14 +41,15 @@ API for predicting cardiovascular disease risk from DICOM images using Tri2D-Net
    python setup.py
    ```
 
-4. Set up environment variables:
+4. (Optional) Set up environment variables:
 
    ```bash
-   # Copy the example environment file
+   # Copy the example environment file (optional)
    cp .env.example .env
 
    # Edit the .env file with your configuration
-   # See Environment Variables section below for details
+   # This is optional as all configuration options have default values
+   # See Configuration section below for details
    ```
 
 5. Run the API:
@@ -63,22 +65,42 @@ Running on: http://127.0.0.1:5556 (localhost)
 Running on: http://192.168.x.x:5556 (local network)
 ```
 
-## Environment Variables
+## Configuration
 
-The application uses environment variables for configuration. You can set these in the `.env` file.
+The application uses a flexible configuration system with default values defined directly in `config.py`. You can override these defaults using environment variables or a `.env` file.
 
-### Key Environment Variables
+### Configuration Options
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ENV` | Application environment (dev, test, prod) | `dev` |
 | `PORT` | Port number for the server | `5556` |
-| `DEVICE` | Device to use for model inference (cuda, cpu) | `cuda` if available |
+| `DEVICE` | Device to use for model inference (cuda, cpu) | `cuda` if available, auto-fallback to `cpu` |
+| `CUDA_VISIBLE_DEVICES` | CUDA device indices to use | `0` (set empty to force CPU) |
 | `MODEL_ITER` | Model iteration checkpoint to load | `700` |
 | `LOG_LEVEL` | Logging level | `DEBUG` in dev, `INFO` otherwise |
 | `CLEANUP_ENABLED` | Enable automatic cleanup of old files | `true` |
 
-For a complete list of environment variables, see the [ENV_README.md](ENV_README.md) file.
+For a complete list of configuration options, see the [ENV_README.md](ENV_README.md) file.
+
+### Configuration Methods
+
+You can configure the application in three ways (in order of precedence):
+
+1. **Environment Variables**: Set directly in your system or container
+2. **`.env` File**: Create a `.env` file in the project root
+3. **Default Values**: Defined in `config.py` (used if no override is provided)
+
+Example of using environment variables:
+
+```bash
+# Windows
+set PORT=5556
+python api.py
+
+# Linux/macOS
+PORT=5556 python api.py
+```
 
 ## API Endpoints
 
@@ -229,12 +251,12 @@ CVD-Risk-Estimator/
 ├── image.py              # DICOM image processing
 ├── tri_2d_net/           # Tri2D-Net model implementation
 ├── checkpoint/           # Model checkpoints
-├── config.py             # Configuration settings
+├── config.py             # Configuration with built-in defaults
 ├── logger.py             # Logging configuration
 ├── requirements.txt      # Project dependencies
-├── .env                  # Environment variables (local)
 ├── .env.example          # Environment variables template
-├── ENV_README.md         # Environment variables documentation
+├── .env                  # Optional environment variables (local)
+├── ENV_README.md         # Configuration documentation
 ├── README.md             # This file
 ├── uploads/              # Temporary upload directory
 ├── results/              # Results and visualizations
@@ -250,6 +272,13 @@ The API returns appropriate HTTP status codes and error messages:
 - 422: Unprocessable Entity (could not detect heart)
 - 500: Internal Server Error
 
+The application includes robust error handling for various scenarios:
+
+- **Missing GPU**: When NVIDIA drivers are not available, the application automatically falls back to CPU mode
+- **Model Loading Failures**: Clear error messages are provided when models fail to load
+- **Heart Detection Fallback**: If the heart detection model fails, a simple geometric method is used as fallback
+- **Graceful Degradation**: The API continues to operate in a degraded mode when possible, with appropriate error responses
+
 ## Logging
 
 Logs are stored in the `logs` directory with UTF-8 encoding to support multiple languages. The log format is:
@@ -262,6 +291,35 @@ Logs are stored in the `logs` directory with UTF-8 encoding to support multiple 
 ## Model Loading Optimization
 
 The application is optimized to load models only once during startup using FastAPI's lifespan context manager. This improves performance and reduces memory usage by preventing duplicate model loading.
+
+## Configuration Optimization
+
+The application uses a three-tier configuration system:
+
+1. Default values defined directly in `config.py`
+2. Optional `.env` file for environment-specific overrides
+3. Environment variables for runtime configuration
+
+This approach provides flexibility while ensuring the application can run with minimal setup. All configuration options have sensible defaults, making the `.env` file completely optional.
+
+## GPU/CPU Compatibility
+
+The application is designed to work on both GPU and CPU environments:
+
+- **Automatic Device Detection**: The system automatically detects if CUDA is available and configures models accordingly
+- **CPU Fallback**: If no NVIDIA GPU is available or if CUDA drivers are not installed, the application automatically falls back to CPU mode
+- **Manual Override**: You can force CPU mode by setting `DEVICE=cpu` in your environment variables or `.env` file
+- **Graceful Error Handling**: The application provides clear error messages when model loading fails and continues to operate in a degraded mode when possible
+
+To explicitly set the device for inference:
+
+```bash
+# Force CPU mode
+DEVICE=cpu python api.py
+
+# Force GPU mode (requires CUDA)
+DEVICE=cuda python api.py
+```
 
 ## Unicode Support
 

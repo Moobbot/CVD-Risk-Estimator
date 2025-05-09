@@ -1,8 +1,31 @@
-# Environment Variables Configuration
+# Configuration Options
 
-This document explains how to configure the application using environment variables.
+This document explains how to configure the application using environment variables or the `.env` file.
 
-## Setup
+## Configuration System
+
+The application uses a flexible configuration system with three layers:
+
+1. **Default Values**: Defined directly in `config.py`
+2. **`.env` File**: Optional file for overriding defaults
+3. **Environment Variables**: Highest priority, override both defaults and `.env` values
+
+## Setup Options
+
+### Option 1: Using Environment Variables
+
+Set environment variables directly in your system or container:
+
+```bash
+# Windows
+set PORT=5556
+python api.py
+
+# Linux/macOS
+PORT=5556 python api.py
+```
+
+### Option 2: Using a .env File
 
 1. Copy the `.env.example` file to create a new `.env` file:
 
@@ -14,11 +37,13 @@ This document explains how to configure the application using environment variab
 
 3. Make sure the `python-dotenv` package is installed:
 
-```bash
-pip install python-dotenv
-```
+   ```bash
+   pip install python-dotenv
+   ```
 
-## Available Environment Variables
+## Available Configuration Options
+
+All configuration options have default values defined directly in `config.py`. You can override these using environment variables or the `.env` file.
 
 ### Environment Configuration
 
@@ -45,8 +70,12 @@ pip install python-dotenv
   - Default: `16`
 - `DEVICE`: Device to use for model inference (cuda, cpu)
   - Default: `cuda` if CUDA is available, otherwise `cpu`
+  - The application automatically detects if CUDA is available and falls back to CPU if needed
+  - Set to `cpu` to force CPU mode even if CUDA is available
 - `CUDA_VISIBLE_DEVICES`: CUDA device indices to use
   - Default: `0`
+  - Set to empty string to force CPU mode: `CUDA_VISIBLE_DEVICES=`
+  - Set to specific device index for multi-GPU systems: `CUDA_VISIBLE_DEVICES=1`
 - `MODEL_ITER`: Model iteration checkpoint to load
   - Default: `700`
 
@@ -75,7 +104,9 @@ pip install python-dotenv
 - `CORS_ORIGINS`: Comma-separated list of allowed origins for CORS
   - Default: `*` in dev environment, `https://example.com` otherwise
 
-## Example .env File
+## Example .env File (Optional)
+
+You can create a `.env` file to override default values. This is completely optional as all configuration options have default values defined in `config.py`.
 
 ```.env
 # Environment Configuration
@@ -120,9 +151,11 @@ ALLOWED_IPS=127.0.0.1,192.168.1.0/24,10.0.0.0/8
 CORS_ORIGINS=*
 ```
 
-## Important Note
+## Important Notes
 
-When adding comments to your environment variables, make sure to place them on a separate line **above** the variable, not on the same line. For example:
+### Comments in .env Files
+
+When adding comments to your environment variables in a `.env` file, make sure to place them on a separate line **above** the variable, not on the same line. For example:
 
 ```plaintext
 # Correct: Comment on a separate line
@@ -134,3 +167,52 @@ PORT=5556  # This is the port number
 ```
 
 This is because when the environment variables are loaded, any text after the value (including comments) will be considered part of the value, which can cause parsing errors.
+
+### Configuration Precedence
+
+The configuration system follows this precedence order (highest to lowest):
+
+1. Environment variables set in the system or container
+2. Values in the `.env` file (if it exists)
+3. Default values defined in `config.py`
+
+This means you can run the application without any external configuration, and it will use the default values defined in the code.
+
+### GPU/CPU Configuration
+
+The application includes an intelligent device selection system:
+
+1. **Automatic Detection**: The system checks if CUDA is available during startup
+2. **Configuration-Based Selection**: Uses the `DEVICE` and `CUDA_VISIBLE_DEVICES` settings
+3. **Fallback Mechanism**: Automatically falls back to CPU if CUDA is not available
+
+#### Forcing CPU Mode
+
+You can force CPU mode in several ways:
+
+```bash
+# Method 1: Set DEVICE to cpu
+DEVICE=cpu python api.py
+
+# Method 2: Set CUDA_VISIBLE_DEVICES to empty
+CUDA_VISIBLE_DEVICES= python api.py
+
+# Method 3: In .env file
+DEVICE=cpu
+```
+
+#### Forcing GPU Mode
+
+To explicitly use GPU (will fail if CUDA is not available):
+
+```bash
+DEVICE=cuda python api.py
+```
+
+#### Multi-GPU Systems
+
+On systems with multiple GPUs, you can select a specific GPU:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 python api.py  # Use second GPU
+```

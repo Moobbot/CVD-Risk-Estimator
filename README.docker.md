@@ -30,17 +30,15 @@ docker-compose down
 #### Không có GPU
 
 ```bash
-# Sử dụng file docker-compose.cpu.yml đặc biệt cho môi trường không có GPU
-docker-compose -f docker-compose.cpu.yml up -d
+# Sử dụng dịch vụ CPU trong docker-compose.yml
+docker-compose up -d cvd-risk-estimator-cpu
 
 # Xem logs
-docker-compose -f docker-compose.cpu.yml logs -f
+docker-compose logs -f cvd-risk-estimator-cpu
 
 # Dừng container
-docker-compose -f docker-compose.cpu.yml down
+docker-compose down
 ```
-
-> **Lưu ý**: Phiên bản CPU sử dụng Dockerfile.cpu riêng biệt đã được tối ưu hóa cho môi trường không có GPU.
 
 ### 2. Xây dựng và chạy với Docker
 
@@ -49,21 +47,21 @@ Nếu bạn không sử dụng Docker Compose, bạn có thể sử dụng các 
 #### Sử dụng GPU
 
 ```bash
-# Xây dựng image cho GPU
-docker build --build-arg USE_GPU=true -t cvd-risk-estimator-gpu .
+# Xây dựng image
+docker build -t cvd-risk-estimator .
 
 # Chạy container với GPU
-docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-gpu
+docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator
 ```
 
 #### Sử dụng CPU
 
 ```bash
-# Xây dựng image cho CPU sử dụng Dockerfile.cpu
-docker build -f Dockerfile.cpu -t cvd-risk-estimator-cpu .
+# Xây dựng image (cùng image với GPU)
+docker build -t cvd-risk-estimator .
 
-# Chạy container với CPU
-docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator-cpu
+# Chạy container với CPU (chỉ định biến môi trường DEVICE=cpu)
+docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env -e DEVICE=cpu -e CUDA_VISIBLE_DEVICES= --name cvd-risk-estimator-cpu -d cvd-risk-estimator
 ```
 
 ## Cấu hình
@@ -76,7 +74,7 @@ Bạn có thể cấu hình ứng dụng bằng cách chỉnh sửa file `.env` 
 environment:
   - ENV=prod
   - HOST_CONNECT=0.0.0.0
-  - PORT=8080
+  - PORT=5556
   - CUDA_VISIBLE_DEVICES=0
   - DEVICE=cuda
 ```
@@ -120,11 +118,20 @@ Nếu bạn gặp lỗi khi tải mô hình, hãy đảm bảo:
 
 ### Giảm kích thước image
 
-Để giảm kích thước image Docker, bạn có thể:
+Dockerfile đã được tối ưu hóa để giảm kích thước image bằng cách:
 
-1. Thêm các file lớn vào `.dockerignore`
-2. Sử dụng multi-stage build
-3. Dọn dẹp các gói không cần thiết sau khi cài đặt
+1. Sử dụng multi-stage build để tách biệt môi trường build và runtime
+2. Sử dụng image cơ sở slim để giảm kích thước
+3. Chỉ cài đặt các gói cần thiết và dọn dẹp cache apt sau khi cài đặt
+4. Thêm các file lớn vào `.dockerignore`
+
+### Bảo mật
+
+Ứng dụng đã được cải thiện bảo mật bằng cách:
+
+1. Chạy ứng dụng với người dùng không phải root (appuser)
+2. Chỉ cài đặt các gói cần thiết cho runtime
+3. Sử dụng các quyền tối thiểu cho các thư mục
 
 ### Cải thiện hiệu suất
 
@@ -140,4 +147,3 @@ Khi triển khai trong môi trường sản xuất, hãy đảm bảo:
 1. Đặt `ENV=prod` để tắt các tính năng debug
 2. Cấu hình `CORS_ORIGINS` để chỉ cho phép các nguồn gốc được tin cậy
 3. Sử dụng proxy ngược như Nginx để xử lý HTTPS và cân bằng tải
-4. Thiết lập giám sát và cảnh báo

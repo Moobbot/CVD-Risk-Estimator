@@ -22,17 +22,19 @@ if detector_path not in sys.path:
 class HeartDetector:
     def __init__(self):
         self.model = None
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
+        # Use the device from MODEL_CONFIG for consistency
+        self.device = torch.device(MODEL_CONFIG["DEVICE"])
+        print(f"Heart detector using device: {self.device}")
 
     def load_model(self):
         """Load the heart detection model"""
         try:
             model_path = MODEL_CONFIG["RETINANET_PATH"]
             if not os.path.exists(model_path):
-                print(f"Model not found at: {model_path}")
+                print(f"Heart detector model not found at: {model_path}")
                 return False
 
+            # Load model with explicit device mapping
             self.model = torch.load(model_path, map_location=self.device)
             self.model = self.model.to(self.device)
             self.model.eval()
@@ -40,6 +42,8 @@ class HeartDetector:
             return True
         except Exception as e:
             print(f"Failed to load heart detector model: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def draw_caption(self, image, box, caption):
@@ -179,14 +183,16 @@ class HeartDetector:
         try:
             for j in range(frame_num - 1, -1, -1):
                 pic = np.tile(np.expand_dims(whole_img[j], axis=2), (1, 1, 3))
-                torch_pic = torch.Tensor(pic).to(self.device).float()
+                # Ensure input is float32 before sending to device
+                torch_pic = torch.from_numpy(pic).to(self.device).float()
                 torch_pic = torch_pic.unsqueeze(0).permute(0, 3, 1, 2).contiguous()
 
                 with torch.no_grad():
                     scores, classification, transformed_anchors = self.model(
                         torch_pic)
-                    scores = scores.data.cpu().numpy()
-                    transformed_anchors = transformed_anchors.data.cpu().numpy()
+                    # Move tensors to CPU before converting to numpy
+                    scores = scores.cpu().numpy()
+                    transformed_anchors = transformed_anchors.cpu().numpy()
                     if scores.size == 0:
                         scores = np.asarray([0])
                         transformed_anchors = np.asarray([[0, 0, 0, 0]])
@@ -259,8 +265,11 @@ class HeartDetector:
                 # Chuẩn bị input
                 img_slice = ct_volume[i]
                 img_normalized = self._normalize_for_detection(img_slice)
-                img_input = np.stack([img_normalized, img_normalized, img_normalized], axis=0)
-                img_tensor = torch.from_numpy(img_input).float().unsqueeze(0).to(self.device)
+
+                # Chuẩn bị input cho mô hình
+                pic = np.tile(np.expand_dims(img_normalized, axis=2), (1, 1, 3))
+                torch_pic = torch.from_numpy(pic).to(self.device).float()
+                torch_pic = torch_pic.unsqueeze(0).permute(0, 3, 1, 2).contiguous()
 
                 # Lưu ảnh để kiểm tra trực quan
                 plt.imsave(f"debug_detector_slice_{i}.png", img_normalized, cmap="gray")
@@ -268,7 +277,10 @@ class HeartDetector:
                 # Thực hiện inference
                 try:
                     with torch.no_grad():
-                        scores, classification, transformed_anchors = self.model(img_tensor)
+                        print(f"Input tensor shape: {torch_pic.shape}, device: {torch_pic.device}")
+                        print(f"Model device: {next(self.model.parameters()).device}")
+
+                        scores, classification, transformed_anchors = self.model(torch_pic)
                         print(f"Scores shape: {scores.shape}")
                         print(f"Classification shape: {classification.shape}")
                         print(f"Transformed anchors shape: {transformed_anchors.shape}")

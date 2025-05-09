@@ -1,4 +1,5 @@
 import logging
+import logging.handlers  # Explicitly import the handlers submodule
 import sys
 from datetime import datetime
 from pathlib import Path

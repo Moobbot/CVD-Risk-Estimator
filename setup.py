@@ -85,7 +85,9 @@ def download_file(url: str, destination: str, show_progress: bool = True) -> boo
             import requests
         except ImportError:
             logger.info("Installing requests package...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "requests"], check=True)
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "requests"], check=True
+            )
             import requests
 
         # Create directory if it doesn't exist
@@ -103,7 +105,7 @@ def download_file(url: str, destination: str, show_progress: bool = True) -> boo
         response.raise_for_status()
 
         # Get total file size if available
-        total_size = int(response.headers.get('content-length', 0))
+        total_size = int(response.headers.get("content-length", 0))
 
         # Save the file with progress reporting
         with open(destination, "wb") as f:
@@ -185,12 +187,19 @@ def check_gpu():
             or os.environ.get("DOCKER_CONTAINER") == "true"
         )
 
+        logger.info(
+            f"Checking GPU in environment: {platform.system()}"
+            + (" (Docker)" if in_docker else "")
+        )
+
         # === LINUX và DOCKER ===
         if platform.system() == "Linux" or in_docker:
             gpus = []
+            logger.info("Checking GPU using Linux methods...")
 
             # Phương pháp 1: Kiểm tra qua nvidia-smi (tốt nhất cho Docker với NVIDIA GPU)
             try:
+                logger.debug("Trying nvidia-smi method...")
                 output = subprocess.check_output(
                     ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                     universal_newlines=True,
@@ -200,12 +209,15 @@ def check_gpu():
                     line.strip() for line in output.split("\n") if line.strip()
                 ]
                 if nvidia_gpus:
+                    logger.info(f"Found {len(nvidia_gpus)} GPUs via nvidia-smi")
                     return nvidia_gpus
             except (subprocess.SubprocessError, FileNotFoundError):
+                logger.debug("nvidia-smi method failed")
                 pass
 
             # Phương pháp 2: Kiểm tra qua lspci
             try:
+                logger.debug("Trying lspci method...")
                 output = subprocess.check_output(
                     ["lspci"], universal_newlines=True, stderr=subprocess.DEVNULL
                 )
@@ -215,21 +227,29 @@ def check_gpu():
                     if "VGA" in line or "3D controller" in line
                 ]
                 if gpu_lines:
+                    logger.info(f"Found {len(gpu_lines)} GPUs via lspci")
                     return gpu_lines
             except (subprocess.SubprocessError, FileNotFoundError):
+                logger.debug("lspci method failed")
                 pass
 
             # Phương pháp 3: Kiểm tra thư mục /proc/driver/nvidia
             if os.path.exists("/proc/driver/nvidia/gpus"):
                 try:
+                    logger.debug("Checking /proc/driver/nvidia/gpus...")
                     gpu_dirs = os.listdir("/proc/driver/nvidia/gpus")
                     if gpu_dirs:
+                        logger.info(
+                            f"Found {len(gpu_dirs)} GPUs via /proc/driver/nvidia/gpus"
+                        )
                         return [f"NVIDIA GPU #{i}" for i in range(len(gpu_dirs))]
                 except Exception:
+                    logger.debug("/proc/driver/nvidia/gpus method failed")
                     pass
 
             # Phương pháp 4: Kiểm tra qua /dev/nvidia*
             try:
+                logger.debug("Checking /dev/nvidia* devices...")
                 nvidia_devices = [
                     dev
                     for dev in os.listdir("/dev")
@@ -238,14 +258,20 @@ def check_gpu():
                     and dev != "nvidia-modeset"
                 ]
                 if nvidia_devices:
+                    logger.info(
+                        f"Found {len(nvidia_devices)} GPUs via /dev/nvidia* devices"
+                    )
                     return [f"NVIDIA GPU device: {dev}" for dev in nvidia_devices]
             except (FileNotFoundError, PermissionError):
+                logger.debug("/dev/nvidia* method failed")
                 pass
 
         # === WINDOWS ===
         elif platform.system() == "Windows":
+            logger.info("Checking GPU using Windows methods...")
             # Phương pháp 1: Sử dụng WMIC
             try:
+                logger.debug("Trying WMIC method...")
                 output = subprocess.check_output(
                     ["wmic", "path", "win32_VideoController", "get", "name"],
                     universal_newlines=True,
@@ -257,12 +283,15 @@ def check_gpu():
                     if line.strip() and "Name" not in line
                 ]
                 if gpus:
+                    logger.info(f"Found {len(gpus)} GPUs via WMIC")
                     return gpus
             except (subprocess.SubprocessError, FileNotFoundError):
+                logger.debug("WMIC method failed")
                 pass
 
             # Phương pháp 2: Sử dụng PowerShell nếu WMIC thất bại
             try:
+                logger.debug("Trying PowerShell method...")
                 output = subprocess.check_output(
                     [
                         "powershell",
@@ -277,13 +306,17 @@ def check_gpu():
                     if line.strip() and "Name" not in line and "----" not in line
                 ]
                 if gpus:
+                    logger.info(f"Found {len(gpus)} GPUs via PowerShell")
                     return gpus
             except (subprocess.SubprocessError, FileNotFoundError):
+                logger.debug("PowerShell method failed")
                 pass
 
         # === macOS ===
         elif platform.system() == "Darwin":
+            logger.info("Checking GPU using macOS methods...")
             try:
+                logger.debug("Trying system_profiler method...")
                 output = subprocess.check_output(
                     ["system_profiler", "SPDisplaysDataType"],
                     universal_newlines=True,
@@ -293,6 +326,9 @@ def check_gpu():
                 gpu_pattern = re.compile(r"Chipset Model: (.+)")
                 matches = gpu_pattern.findall(output)
                 if matches:
+                    logger.info(
+                        f"Found {len(matches)} GPUs via system_profiler (regex)"
+                    )
                     return [f"Chipset Model: {match}" for match in matches]
 
                 # Phương pháp thay thế nếu regex không hoạt động
@@ -302,30 +338,39 @@ def check_gpu():
                     if "Chipset Model" in line
                 ]
                 if gpus:
+                    logger.info(
+                        f"Found {len(gpus)} GPUs via system_profiler (line search)"
+                    )
                     return gpus
             except (subprocess.SubprocessError, FileNotFoundError):
+                logger.debug("system_profiler method failed")
                 pass
 
         # === Phương pháp cuối cùng: Kiểm tra biến môi trường ===
+        logger.info("Checking GPU using environment variables...")
         # Kiểm tra biến môi trường CUDA_VISIBLE_DEVICES
         cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
         if cuda_devices and cuda_devices != "-1":
+            logger.info(f"Found GPUs via CUDA_VISIBLE_DEVICES: {cuda_devices}")
             return [f"CUDA Device #{dev}" for dev in cuda_devices.split(",")]
 
         # Kiểm tra biến môi trường GPU_DEVICE_ORDINAL (cho ROCm/AMD)
         rocm_devices = os.environ.get("GPU_DEVICE_ORDINAL")
         if rocm_devices:
+            logger.info(f"Found GPUs via GPU_DEVICE_ORDINAL: {rocm_devices}")
             return [f"ROCm Device #{dev}" for dev in rocm_devices.split(",")]
 
-        print("Không phát hiện được GPU hoặc không hỗ trợ hệ điều hành này.")
+        logger.warning("No GPU detected or unsupported operating system.")
         return None
 
     except Exception as e:
-        print(f"Lỗi khi kiểm tra GPU: {e}")
+        logger.error(f"Error checking GPU: {e}")
         return None
 
 
-def install_packages(cuda_version: str = DEFAULT_CUDA_VERSION, force_cpu: bool = False) -> bool:
+def install_packages(
+    cuda_version: str = DEFAULT_CUDA_VERSION, force_cpu: bool = False
+) -> bool:
     """
     Install required packages including PyTorch.
 
@@ -342,7 +387,9 @@ def install_packages(cuda_version: str = DEFAULT_CUDA_VERSION, force_cpu: bool =
             import requests
         except ImportError:
             logger.info("Installing requests package...")
-            subprocess.run([sys.executable, "-m", "pip", "install", "requests"], check=True)
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "requests"], check=True
+            )
 
         # Check for GPU
         gpus = None if force_cpu else check_gpu()
@@ -356,7 +403,9 @@ def install_packages(cuda_version: str = DEFAULT_CUDA_VERSION, force_cpu: bool =
 
             # Validate CUDA version
             if cuda_version not in CUDA_VERSIONS:
-                logger.warning(f"Unsupported CUDA version: {cuda_version}. Using default: {DEFAULT_CUDA_VERSION}")
+                logger.warning(
+                    f"Unsupported CUDA version: {cuda_version}. Using default: {DEFAULT_CUDA_VERSION}"
+                )
                 cuda_version = DEFAULT_CUDA_VERSION
 
             cuda_suffix = CUDA_VERSIONS[cuda_version]
@@ -364,24 +413,35 @@ def install_packages(cuda_version: str = DEFAULT_CUDA_VERSION, force_cpu: bool =
 
             # Install PyTorch with CUDA support
             cmd = [
-                sys.executable, "-m", "pip", "install",
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
                 *PYTORCH_VERSIONS["cuda"],
-                "--index-url", f"https://download.pytorch.org/whl/{cuda_suffix}"
+                "--index-url",
+                f"https://download.pytorch.org/whl/{cuda_suffix}",
             ]
             result = subprocess.run(cmd, check=True)
 
             if result.returncode != 0:
-                logger.error("Failed to install PyTorch with CUDA support. Falling back to CPU version.")
+                logger.error(
+                    "Failed to install PyTorch with CUDA support. Falling back to CPU version."
+                )
                 cmd = [sys.executable, "-m", "pip", "install", *PYTORCH_VERSIONS["cpu"]]
                 subprocess.run(cmd, check=True)
         else:
-            logger.info("No GPU detected or CPU version forced. Installing CPU version of PyTorch...")
+            logger.info(
+                "No GPU detected or CPU version forced. Installing CPU version of PyTorch..."
+            )
             cmd = [sys.executable, "-m", "pip", "install", *PYTORCH_VERSIONS["cpu"]]
             subprocess.run(cmd, check=True)
 
         # Install other requirements
         logger.info("Installing other requirements...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
+            check=True,
+        )
 
         return True
 
@@ -410,7 +470,9 @@ def download_model_checkpoints(skip_download: bool = False) -> bool:
     logger.info("Checking and downloading model checkpoints from Dropbox...")
 
     # Create checkpoint directory if it doesn't exist
-    checkpoint_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoint")
+    checkpoint_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "checkpoint"
+    )
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # List of model files to download
@@ -443,7 +505,9 @@ def download_model_checkpoints(skip_download: bool = False) -> bool:
         logger.warning("Some model files could not be downloaded automatically:")
         for missing_file in missing_files:
             logger.warning(f" - {missing_file}")
-        logger.info("Please download these files manually from Dropbox and place them in the checkpoint directory.")
+        logger.info(
+            "Please download these files manually from Dropbox and place them in the checkpoint directory."
+        )
         return False
     else:
         logger.info("All model files are available in the checkpoint directory.")
@@ -460,15 +524,11 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Setup script for CVD Risk Estimator")
 
     parser.add_argument(
-        "--skip-packages",
-        action="store_true",
-        help="Skip package installation"
+        "--skip-packages", action="store_true", help="Skip package installation"
     )
 
     parser.add_argument(
-        "--skip-models",
-        action="store_true",
-        help="Skip model checkpoint download"
+        "--skip-models", action="store_true", help="Skip model checkpoint download"
     )
 
     parser.add_argument(
@@ -476,20 +536,16 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         choices=list(CUDA_VERSIONS.keys()),
         default=DEFAULT_CUDA_VERSION,
-        help=f"CUDA version to use (default: {DEFAULT_CUDA_VERSION})"
+        help=f"CUDA version to use (default: {DEFAULT_CUDA_VERSION})",
     )
 
     parser.add_argument(
         "--force-cpu",
         action="store_true",
-        help="Force CPU installation even if GPU is detected"
+        help="Force CPU installation even if GPU is detected",
     )
 
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
     return parser.parse_args()
 

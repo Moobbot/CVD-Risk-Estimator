@@ -43,8 +43,21 @@ async def lifespan(_: FastAPI):
         try:
             logger.info("Loading models on application startup...")
             heart_detector, model = load_model()
+
+            # Log model status
+            if heart_detector is None:
+                logger.warning("Heart detector model not loaded. Will use simple method for heart detection.")
+            else:
+                logger.info("Heart detector model loaded successfully.")
+
+            if model is None:
+                logger.warning("CVD risk prediction model not loaded. API will return errors for prediction requests.")
+            else:
+                logger.info("CVD risk prediction model loaded successfully.")
+
         except Exception as e:
-            logger.error(f"Error initializing models: {str(e)}")
+            logger.error(f"Error during model initialization: {str(e)}")
+            logger.error(traceback.format_exc())
             # Don't raise exception here so the application can still start
 
     yield  # This is where FastAPI runs
@@ -166,6 +179,10 @@ def load_model():
     Returns:
         tuple: (heart_detector, model) - Loaded models
     """
+    heart_detector = None
+    model = None
+
+    # Try to load heart detector
     try:
         logger.info("Loading heart detection model...")
         heart_detector = HeartDetector()
@@ -173,16 +190,26 @@ def load_model():
             logger.warning(
                 "Could not load heart detection model, will use simple method"
             )
-
-        logger.info("Loading cardiovascular risk prediction model...")
-        m = init_model()
-        m.load_model(MODEL_CONFIG["ITER"])
-        logger.info("Models loaded successfully")
-        return heart_detector, m
     except Exception as e:
-        logger.error(f"Could not load models: {str(e)}")
+        logger.error(f"Error loading heart detection model: {str(e)}")
         logger.error(traceback.format_exc())
-        raise RuntimeError(f"Could not load models: {str(e)}")
+        # Continue with heart_detector = None, simple method will be used
+
+    # Try to load CVD risk prediction model
+    try:
+        logger.info("Loading cardiovascular risk prediction model...")
+        model = init_model()
+        model.load_model(MODEL_CONFIG["ITER"])
+        logger.info("CVD risk prediction model loaded successfully")
+    except Exception as e:
+        logger.error(f"Could not load CVD risk prediction model: {str(e)}")
+        logger.error(traceback.format_exc())
+        # This is a critical error, but we'll return None and handle it in the API
+        model = None
+
+    # Return both models, even if one or both are None
+    # The API will check and handle appropriately
+    return heart_detector, model
 
 
 @app.post("/api_predict")
@@ -285,18 +312,42 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
             logger.info("Converting to model input...")
             network_input = img.to_network_input()
 
+            # Check if model is available
+            if model is None:
+                return JSONResponse(
+                    {"error": "CVD risk prediction model is not available. Please check server logs."},
+                    status_code=500
+                )
+
             # Dự đoán điểm rủi ro
             logger.info("Estimating cardiovascular risk...")
-            score = model.aug_transform(network_input)[1].item()
-            logger.info(f"Risk score: {score}")
+            try:
+                pred_result = model.aug_transform(network_input)
+                score = pred_result[1].item()
+                logger.info(f"Risk score: {score}")
+            except Exception as e:
+                logger.error(f"Error during risk prediction: {str(e)}")
+                logger.error(traceback.format_exc())
+                return JSONResponse(
+                    {"error": f"Error during risk prediction: {str(e)}"},
+                    status_code=500
+                )
 
             # Tính toán và lưu Grad-CAM
             logger.info("Calculating and saving Grad-CAM...")
-            cam_data = model.grad_cam_visual(network_input)
+            try:
+                cam_data = model.grad_cam_visual(network_input)
 
-            # Lưu ảnh Grad-CAM vào thư mục và tạo GIF trực tiếp từ bộ nhớ
-            success, gif_path = img.save_grad_cam_on_original(cam_data, overlay_dir, create_gif=True, session_id=session_id)
-            logger.info(f"Saved Grad-CAM to directory: {overlay_dir}")
+                # Lưu ảnh Grad-CAM vào thư mục và tạo GIF trực tiếp từ bộ nhớ
+                success, gif_path = img.save_grad_cam_on_original(cam_data, overlay_dir, create_gif=True, session_id=session_id)
+                logger.info(f"Saved Grad-CAM to directory: {overlay_dir}")
+            except Exception as e:
+                logger.error(f"Error during Grad-CAM calculation: {str(e)}")
+                logger.error(traceback.format_exc())
+                return JSONResponse(
+                    {"error": f"Error during visualization: {str(e)}"},
+                    status_code=500
+                )
 
             if not success:
                 return JSONResponse(

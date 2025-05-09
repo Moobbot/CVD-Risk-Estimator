@@ -1,75 +1,28 @@
-# Dockerfile hỗ trợ cả môi trường GPU và CPU
-# Mặc định sử dụng GPU
-ARG USE_GPU=true
+FROM python:3.10
 
-# Sử dụng image Python 3.10 với CUDA 12.1 làm base image cho GPU
-# Hoặc sử dụng image Python 3.10 Ubuntu cho CPU
-FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
-
-# Thiết lập biến môi trường
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive \
-    TZ=Asia/Ho_Chi_Minh
-
-# Cài đặt các gói phụ thuộc hệ thống
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 \
-    python3-pip \
-    python3.10-dev \
-    python3-setuptools \
-    python3-wheel \
-    wget \
-    git \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Tạo symbolic link cho python
-RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip
-
-# Nâng cấp pip
-RUN pip install --no-cache-dir --upgrade pip
-
-# Tạo thư mục làm việc
 WORKDIR /app
 
-# Sao chép setup.py và requirements.txt trước để tận dụng Docker cache
-COPY setup.py requirements.txt ./
+# Cài đặt các thư viện hệ thống cần thiết
+RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 -y
 
-# Cài đặt các gói phụ thuộc Python thông qua setup.py
-# Sử dụng build argument để xác định cài đặt CUDA hay CPU
-ARG USE_GPU=true
-ARG CUDA_VERSION=12.1
+# Tạo và sử dụng virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Cài đặt các gói phụ thuộc Python
-RUN if [ "$USE_GPU" = "true" ]; then \
-        python setup.py --cuda-version ${CUDA_VERSION}; \
-    else \
-        python setup.py --force-cpu; \
-    fi
+# Cập nhật pip lên phiên bản 24.0
+RUN pip install --upgrade pip==24.0
 
-# Sao chép mã nguồn ứng dụng
 COPY . .
 
-# Tạo các thư mục cần thiết
-RUN mkdir -p uploads results logs checkpoint detector
+# Cài đặt dependencies từ setup.py
+RUN python setup.py
 
 # Thiết lập biến môi trường cho ứng dụng
 ENV HOST_CONNECT=0.0.0.0 \
     PORT=5556 \
-    ENV=prod
-
-# Thiết lập biến môi trường dựa trên loại image
-ENV DEVICE=${USE_GPU:+cuda}
-ENV DEVICE=${DEVICE:-cpu}
-ENV CUDA_VISIBLE_DEVICES=${USE_GPU:+0}
-ENV CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
+    ENV=prod \
+    DEVICE=cuda
 
 # Mở cổng cho API
 EXPOSE 5556
