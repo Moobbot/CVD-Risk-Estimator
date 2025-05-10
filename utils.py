@@ -69,6 +69,10 @@ def cleanup_old_files(folders: List[str], expiry_time=FILE_RETENTION) -> None:
 
         for filename in os.listdir(folder):
             file_path = os.path.join(folder, filename)
+            # Skip .gitignore files
+            if filename == ".gitignore":
+                continue
+
             try:
                 file_time = datetime.fromtimestamp(os.path.getctime(file_path))
 

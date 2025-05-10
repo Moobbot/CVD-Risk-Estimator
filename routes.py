@@ -8,10 +8,10 @@ import SimpleITK as sitk
 from fastapi import APIRouter, File, UploadFile, Request
 from fastapi.responses import JSONResponse, FileResponse
 
-from config import FOLDERS
-from image import Image
+from config import FOLDERS, ERROR_MESSAGES
 from logger import setup_logger
-from utils import process_attention_scores, create_zip_result
+from utils import create_zip_result
+from call_model import predict
 
 # Cấu hình SimpleITK
 sitk.ProcessObject.SetGlobalDefaultThreader("platform")
@@ -43,7 +43,7 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
 
     # Kiểm tra định dạng file
     if not file or file.filename == "":
-        return JSONResponse({"error": "No selected file"}, status_code=400)
+        return JSONResponse({"error": ERROR_MESSAGES["invalid_file"]}, status_code=400)
 
     if not file.filename.endswith(".zip"):
         return JSONResponse(
@@ -59,13 +59,11 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
     # Tạo thư mục cho session này
     dicom_uuid_dir = os.path.join(FOLDERS["UPLOAD"], session_id)
     result_uuid_dir = os.path.join(FOLDERS["RESULTS"], session_id)
-    overlay_dir = os.path.join(result_uuid_dir)
 
     try:
         # Tạo thư mục
         os.makedirs(dicom_uuid_dir, exist_ok=True)
         os.makedirs(result_uuid_dir, exist_ok=True)
-        os.makedirs(overlay_dir, exist_ok=True)
 
         # Đường dẫn lưu file ZIP tạm thời
         zip_path = os.path.join(FOLDERS["UPLOAD"], f"{session_id}.zip")
@@ -110,82 +108,36 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
                 logger.info(f"Found directory containing DICOM files: {root}")
                 break
 
-        # Đọc ảnh DICOM và phát hiện tim
+        # Check if models are available
+        if model is None:
+            return JSONResponse(
+                {"error": ERROR_MESSAGES["model_not_found"]},
+                status_code=500
+            )
+
+        # Run prediction
         try:
-            logger.info(f"Reading DICOM images from directory: {dicom_dir}")
-            img = Image(dicom_dir, heart_detector)
+            pred_dict, attention_info, gif_path = predict(
+                dicom_dir=dicom_dir,
+                output_dir=result_uuid_dir,
+                heart_detector=heart_detector,
+                model=model,
+                session_id=session_id,
+                create_gif=True
+            )
 
-            # Phát hiện tim
-            logger.info("Detecting heart...")
-            if not img.detect_heart():
-                logger.error("Could not detect heart in DICOM images")
-                return JSONResponse(
-                    {"error": "Could not detect heart in DICOM images"}, status_code=422
-                )
-
-            # Chuyển đổi sang đầu vào cho mô hình
-            logger.info("Converting to model input...")
-            network_input = img.to_network_input()
-
-            # Check if model is available
-            if model is None:
-                return JSONResponse(
-                    {"error": "CVD risk prediction model is not available. Please check server logs."},
-                    status_code=500
-                )
-
-            # Dự đoán điểm rủi ro
-            logger.info("Estimating cardiovascular risk...")
-            try:
-                pred_result = model.aug_transform(network_input)
-                score = pred_result[1].item()
-                logger.info(f"Risk score: {score}")
-            except Exception as e:
-                logger.error(f"Error during risk prediction: {str(e)}")
-                logger.error(traceback.format_exc())
-                return JSONResponse(
-                    {"error": f"Error during risk prediction: {str(e)}"},
-                    status_code=500
-                )
-
-            # Tính toán và lưu Grad-CAM
-            logger.info("Calculating and saving Grad-CAM...")
-            try:
-                cam_data = model.grad_cam_visual(network_input)
-
-                # Lưu ảnh Grad-CAM vào thư mục và tạo GIF trực tiếp từ bộ nhớ
-                success, gif_path = img.save_grad_cam_on_original(cam_data, overlay_dir, create_gif=True, session_id=session_id)
-                logger.info(f"Saved Grad-CAM to directory: {overlay_dir}")
-            except Exception as e:
-                logger.error(f"Error during Grad-CAM calculation: {str(e)}")
-                logger.error(traceback.format_exc())
-                return JSONResponse(
-                    {"error": f"Error during visualization: {str(e)}"},
-                    status_code=500
-                )
-
-            if not success:
-                return JSONResponse(
-                    {"error": "Failed to save overlay images"}, status_code=500
-                )
-
-            # Kiểm tra thư mục overlay có tồn tại và có ảnh không
-            if not os.path.exists(overlay_dir):
-                return JSONResponse(
-                    {"error": "Overlay images folder not found"}, status_code=500
-                )
-
-            overlay_files = os.listdir(overlay_dir)
+            # Kiểm tra thư mục kết quả có tồn tại và có ảnh không
+            overlay_files = os.listdir(result_uuid_dir)
             if not overlay_files:
                 return JSONResponse(
                     {"error": "No overlay images generated"}, status_code=500
                 )
 
-            logger.info(f"Found {len(overlay_files)} overlay images in {overlay_dir}")
+            logger.info(f"Found {len(overlay_files)} overlay images in {result_uuid_dir}")
 
             # Nén kết quả thành file ZIP
             try:
-                zip_path = create_zip_result(overlay_dir, session_id)
+                zip_path = create_zip_result(result_uuid_dir, session_id)
                 logger.info(f"Created ZIP file at: {zip_path}")
 
                 if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
@@ -199,44 +151,21 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
                     {"error": f"Failed to create zip file: {str(e)}"}, status_code=500
                 )
 
-            # Ghi log kết quả tạo GIF
-            if gif_path:
-                logger.info(f"Created GIF file at: {gif_path}")
-            else:
-                logger.warning("Could not create GIF file")
-                # Thử tạo GIF từ file nếu tạo trực tiếp từ bộ nhớ không thành công
-                try:
-                    gif_path = img.create_gif_from_overlay_images(overlay_dir, session_id)
-                    if gif_path:
-                        logger.info(f"Created GIF file from disk at: {gif_path}")
-                except Exception as e:
-                    logger.error(f"Error creating GIF file from disk: {str(e)}")
-                    # Không trả về lỗi, tiếp tục xử lý vì GIF là tính năng bổ sung
-
             # Tạo URL cho file ZIP và GIF
             base_url = str(request.base_url).rstrip("/")
             zip_download_link = f"{base_url}/download_zip/{session_id}"
             gif_download_link = f"{base_url}/download_gif/{session_id}" if gif_path else None
 
-            # Xử lý điểm chú ý
-            heart_indices = [i for i, val in enumerate(img.bbox_selected) if val == 1]
-            attention_info = process_attention_scores(
-                cam_data, heart_indices, img.dicom_names
-            )
-
-            # Tạo kết quả trả về theo định dạng của Sybil
-            predictions = [{"score": float(score)}]
-
+            # Tạo kết quả trả về
             response = {
                 "session_id": session_id,
-                "predictions": predictions,
+                "predictions": pred_dict["predictions"],
                 "overlay_images": zip_download_link,
                 "overlay_gif": gif_download_link,
                 "attention_info": attention_info,
                 "message": "Prediction successful.",
             }
 
-            # logger.info(f"Response: {response}")
             logger.info(f"Prediction {session_id} successful.")
             return JSONResponse(response)
 

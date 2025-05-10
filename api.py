@@ -7,54 +7,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from config import FOLDERS, API_TITLE, API_DESCRIPTION, API_VERSION
-from tri_2d_net.init_model import init_model
-from heart_detector import HeartDetector
+from config import FOLDERS, API_TITLE, API_DESCRIPTION, API_VERSION, SECURITY_CONFIG
 from logger import setup_logger
 from utils import cleanup_old_files, get_local_ip
+from call_model import load_model
 
 # Set up logger with date-based organization
 logger = setup_logger("api")
-
-
-def load_model():
-    """
-    Load necessary models for the application
-
-    Returns:
-        tuple: (heart_detector, model) - Loaded models
-    """
-    heart_detector = None
-    model = None
-
-    # Try to load heart detector
-    try:
-        logger.info("Loading heart detection model...")
-        heart_detector = HeartDetector()
-        if not heart_detector.load_model():
-            logger.warning(
-                "Could not load heart detection model, will use simple method"
-            )
-    except Exception as e:
-        logger.error(f"Error loading heart detection model: {str(e)}")
-        logger.error(traceback.format_exc())
-        # Continue with heart_detector = None, simple method will be used
-
-    # Try to load CVD risk prediction model
-    try:
-        logger.info("Loading cardiovascular risk prediction model...")
-        model = init_model()
-        model.load_model()
-        logger.info("CVD risk prediction model loaded successfully")
-    except Exception as e:
-        logger.error(f"Could not load CVD risk prediction model: {str(e)}")
-        logger.error(traceback.format_exc())
-        # This is a critical error, but we'll return None and handle it in the API
-        model = None
-
-    # Return both models, even if one or both are None
-    # The API will check and handle appropriately
-    return heart_detector, model
 
 
 # Define lifespan context manager for FastAPI
@@ -114,10 +73,10 @@ app = FastAPI(
 # Cấu hình CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=SECURITY_CONFIG["CORS_ORIGINS"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=SECURITY_CONFIG["CORS_METHODS"],
+    allow_headers=SECURITY_CONFIG["CORS_HEADERS"],
 )
 
 # Phục vụ các file tĩnh từ thư mục kết quả
