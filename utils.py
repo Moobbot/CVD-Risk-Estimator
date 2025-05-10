@@ -12,8 +12,10 @@ from datetime import datetime, timedelta
 import socket
 from typing import List, Dict, Any
 import zipfile
+import numpy as np
 import pydicom
 from fastapi import UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 import psutil
 from config import (
     FILE_RETENTION,
@@ -23,7 +25,6 @@ from config import (
     ALLOWED_EXTENSIONS,
     ERROR_MESSAGES,
 )
-from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,41 @@ def cleanup_old_files(folders: List[str], expiry_time=FILE_RETENTION) -> None:
                         logger.info(f"Removed old directory: {file_path}")
             except Exception as e:
                 logger.error(f"Error cleaning up {file_path}: {str(e)}")
+
+
+def process_attention_scores(cam_data, heart_indices, dicom_names):
+    """Xử lý điểm chú ý để trả về định dạng giống Sybil"""
+    attention_scores = []
+
+    for idx, orig_idx in enumerate(heart_indices):
+        if idx >= len(cam_data):
+            break
+
+        # Lấy slice tương ứng từ cam_data
+        cam_slice = cam_data[idx]
+
+        # Tính điểm chú ý (trung bình giá trị trong slice)
+        score = float(np.mean(cam_slice))
+
+        if score > 0:
+            attention_scores.append(
+                {
+                    "file_name_pred": f"{orig_idx}_{dicom_names[orig_idx]}.png",
+                    "attention_score": score,
+                }
+            )
+
+    # Sắp xếp theo điểm chú ý giảm dần
+    attention_scores.sort(key=lambda x: x["attention_score"], reverse=True)
+
+    # Tạo kết quả
+    result = {
+        "attention_scores": attention_scores,
+        "total_images": len(heart_indices),
+        "returned_images": len(attention_scores),
+    }
+
+    return result
 
 
 def validate_dicom_file(file: UploadFile) -> bool:
@@ -313,6 +349,8 @@ def create_zip_result(output_dir, session_id, folder_save=FOLDERS["RESULTS"]):
     result_zip_path = os.path.join(folder_save, f"{session_id}.zip")
     if IS_DEV == "dev":
         print(f"Creating zip file from {output_dir} to {result_zip_path}")
+    else:
+        logger.info(f"Creating ZIP file from {output_dir} to {result_zip_path}")
 
     with zipfile.ZipFile(result_zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, _, files in os.walk(output_dir):
@@ -323,6 +361,8 @@ def create_zip_result(output_dir, session_id, folder_save=FOLDERS["RESULTS"]):
 
     if IS_DEV == "dev":
         print(f"Zip file size: {os.path.getsize(result_zip_path)} bytes")
+    else:
+        logger.info(f"ZIP file size: {os.path.getsize(result_zip_path)} bytes")
     return result_zip_path
 
 def CT_resize(image, new_size=None, new_space=None, new_direction=None, new_org=None):
