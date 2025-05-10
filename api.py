@@ -399,9 +399,8 @@ async def api_predict(request: Request, file: UploadFile = File(...)) -> JSONRes
                     # Không trả về lỗi, tiếp tục xử lý vì GIF là tính năng bổ sung
 
             # Tạo URL cho file ZIP và GIF
-            base_url = str(request.base_url).rstrip("/")
-            zip_download_link = f"{base_url}/download_zip/{session_id}"
-            gif_download_link = f"{base_url}/download_gif/{session_id}" if gif_path else None
+            zip_download_link = f"/download_zip/{session_id}"
+            gif_download_link = f"/download_gif/{session_id}" if gif_path else None
 
             # Xử lý điểm chú ý
             heart_indices = [i for i, val in enumerate(img.bbox_selected) if val == 1]
