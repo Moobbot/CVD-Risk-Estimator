@@ -396,7 +396,7 @@ def install_packages(
             )
 
         # Check for GPU
-        gpus = None if force_cpu else check_gpu()
+        gpus = None if force_cpu else ["check_gpu()"]
 
         # Install PyTorch
         logger.info("Installing PyTorch and related packages...")
