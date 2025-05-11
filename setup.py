@@ -186,6 +186,10 @@ def check_gpu():
             os.path.exists("/.dockerenv")
             or os.environ.get("DOCKER_CONTAINER") == "true"
         )
+        if in_docker:
+            logger.info("Running in Docker container")
+            gpus= ["GPU in Docker"]
+            return None
 
         logger.info(
             f"Checking GPU in environment: {platform.system()}"
