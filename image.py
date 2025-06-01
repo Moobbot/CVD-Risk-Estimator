@@ -189,7 +189,7 @@ class Image:
         # Create GIF directly from memory if requested
         gif_path = None
         if create_gif and blended_images:
-            gif_path = self.create_gif_from_images(blended_images, image_indices, session_id)
+            gif_path = self.create_gif_from_images(blended_images, image_indices, session_id, output_folder)
 
         return True, gif_path
 
@@ -238,7 +238,7 @@ class Image:
         try:
             # Nếu không có output_folder, sử dụng thư mục session_id
             if output_folder is None:
-                output_folder = os.path.join(FOLDERS["RESULTS"], session_id)
+                output_folder = os.path.join(FOLDERS["RESULTS"], session_id, "cvd")
                 os.makedirs(output_folder, exist_ok=True)
 
             # Đường dẫn file GIF trong thư mục session_id

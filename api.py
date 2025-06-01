@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import FOLDERS, API_TITLE, API_DESCRIPTION, API_VERSION, SECURITY_CONFIG
 from logger import setup_logger
-from utils import cleanup_old_files, get_local_ip
+from utils import get_local_ip
 from call_model import load_model
 
 # Set up logger with date-based organization
@@ -25,8 +25,7 @@ async def lifespan(_: FastAPI):
     """
     global heart_detector, model
 
-    # Startup: Load models and clean up old directories
-    cleanup_old_files([FOLDERS["UPLOAD"], FOLDERS["RESULTS"]])
+    # Startup: Load models
 
     # Only load models if they haven't been loaded yet
     if heart_detector is None or model is None:
