@@ -1,3 +1,4 @@
+import torch
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -57,7 +58,8 @@ try:
     load_dotenv(dotenv_path=env_path)
     logging.info(f"Loaded environment variables from {env_path}")
 except ImportError:
-    logging.warning("python-dotenv package not installed. Using environment variables from system.")
+    logging.warning(
+        "python-dotenv package not installed. Using environment variables from system.")
 except Exception as e:
     logging.warning(f"Failed to load .env file: {e}")
 
@@ -66,7 +68,8 @@ ENV = os.getenv("ENV", ENV_DEFAULT)
 IS_DEV = ENV == "dev"
 
 # Server Configuration
-HOST_CONNECT = os.getenv("HOST_CONNECT", HOST_CONNECT_DEFAULT)  # Run on all IP addresses
+# Run on all IP addresses
+HOST_CONNECT = os.getenv("HOST_CONNECT", HOST_CONNECT_DEFAULT)
 PORT_CONNECT = int(os.getenv("PORT", PORT_DEFAULT))  # Default port is 5556
 
 # API Configuration
@@ -80,8 +83,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Folder Configuration
 FOLDERS = {
-    "UPLOAD": os.path.join(BASE_DIR, "uploads"),
-    "RESULTS": os.path.join(BASE_DIR, "results"),
+    "UPLOAD": os.getenv(
+        "UPLOAD_FOLDER", "../backend/src/data/dicom/uploads"),
+    "RESULTS": os.getenv(
+        "RESULTS_FOLDER", "../backend/src/data/dicom/results"),
     "LOGS": os.path.join(BASE_DIR, "logs"),
 }
 
@@ -96,25 +101,28 @@ os.makedirs(FOLDERS_DETECTOR, exist_ok=True)
 # File Configuration
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", MAX_FILE_SIZE_DEFAULT))  # 100MB
 ALLOWED_EXTENSIONS = {".dcm"}
-FILE_RETENTION = int(os.getenv("FILE_RETENTION", FILE_RETENTION_DEFAULT))  # 1 hour
+FILE_RETENTION = int(
+    os.getenv("FILE_RETENTION", FILE_RETENTION_DEFAULT))  # 1 hour
 
 
 # Model Configuration
 MODEL_ITER = int(os.getenv("MODEL_ITER", MODEL_ITER_DEFAULT))
 
 # Determine device based on environment variables and CUDA availability
-import torch
 CUDA_AVAILABLE = torch.cuda.is_available()
 DEVICE_ENV = os.getenv("DEVICE", DEVICE_DEFAULT)
-CUDA_VISIBLE_DEVICES_ENV = os.getenv("CUDA_VISIBLE_DEVICES", CUDA_VISIBLE_DEVICES_DEFAULT)
+CUDA_VISIBLE_DEVICES_ENV = os.getenv(
+    "CUDA_VISIBLE_DEVICES", CUDA_VISIBLE_DEVICES_DEFAULT)
 
 # If CUDA is not available or DEVICE is explicitly set to 'cpu', use CPU
 if not CUDA_AVAILABLE or DEVICE_ENV.lower() == "cpu" or not CUDA_VISIBLE_DEVICES_ENV:
     ACTUAL_DEVICE = "cpu"
-    print(f"Using CPU for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}")
+    print(
+        f"Using CPU for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}")
 else:
     ACTUAL_DEVICE = "cuda"
-    print(f"Using CUDA for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}")
+    print(
+        f"Using CUDA for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}")
 
 MODEL_CONFIG = {
     "CHECKPOINT_PATH": os.path.join(
@@ -136,7 +144,8 @@ LOG_CONFIG = {
     "FORMAT": "%(asctime)s - %(levelname)s - [%(name)s] - %(message)s",
     "LEVEL": os.getenv("LOG_LEVEL", "DEBUG" if IS_DEV else "INFO"),
     "CONSOLE": IS_DEV,
-    "MAX_BYTES": int(os.getenv("LOG_MAX_BYTES", LOG_MAX_BYTES_DEFAULT)),  # 10MB
+    # 10MB
+    "MAX_BYTES": int(os.getenv("LOG_MAX_BYTES", LOG_MAX_BYTES_DEFAULT)),
     "BACKUP_COUNT": int(os.getenv("LOG_BACKUP_COUNT", LOG_BACKUP_COUNT_DEFAULT)),
 }
 
@@ -155,13 +164,15 @@ ERROR_MESSAGES = {
 # Cleanup Configuration
 CLEANUP_CONFIG = {
     "ENABLED": os.getenv("CLEANUP_ENABLED", CLEANUP_ENABLED_DEFAULT).lower() in ("true", "1", "yes"),
-    "INTERVAL_HOURS": int(os.getenv("CLEANUP_INTERVAL_HOURS", CLEANUP_INTERVAL_HOURS_DEFAULT)),  # Run cleanup every 3 hours
-    "MAX_AGE_DAYS": int(os.getenv("CLEANUP_MAX_AGE_DAYS", CLEANUP_MAX_AGE_DAYS_DEFAULT)),  # Keep files for 1 days
+    # Run cleanup every 3 hours
+    "INTERVAL_HOURS": int(os.getenv("CLEANUP_INTERVAL_HOURS", CLEANUP_INTERVAL_HOURS_DEFAULT)),
+    # Keep files for 1 days
+    "MAX_AGE_DAYS": int(os.getenv("CLEANUP_MAX_AGE_DAYS", CLEANUP_MAX_AGE_DAYS_DEFAULT)),
     "PATTERNS": {
         "UPLOAD": "*.dcm",
         "RESULTS": "*.zip",
         "REPORTS": "*.txt",
-        "VISUALIZATIONS": "*.dcm", #png
+        "VISUALIZATIONS": "*.dcm",  # png
         "DEBUG": "*.json",
     },
 }
@@ -172,11 +183,13 @@ allowed_ips_str = os.getenv("ALLOWED_IPS", ALLOWED_IPS_DEFAULT)
 allowed_ips = [ip.strip() for ip in allowed_ips_str.split(",") if ip.strip()]
 
 # Parse comma-separated list of allowed origins for CORS
-cors_origins_str = os.getenv("CORS_ORIGINS", CORS_ORIGINS_DEFAULT if IS_DEV else "https://example.com")
+cors_origins_str = os.getenv(
+    "CORS_ORIGINS", CORS_ORIGINS_DEFAULT if IS_DEV else "https://example.com")
 if cors_origins_str == "*":
     cors_origins = ["*"]
 else:
-    cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+    cors_origins = [origin.strip()
+                    for origin in cors_origins_str.split(",") if origin.strip()]
 
 SECURITY_CONFIG = {
     "ALLOWED_IPS": allowed_ips,
