@@ -4,6 +4,7 @@
 
 # Heatmap Visualization with Grad-CAM
 import sys
+import torch
 import torch.nn as nn
 
 sys.path.append("./")
@@ -13,10 +14,16 @@ from tri_2d_net.net import AttBranch, Branch
 
 
 class GradCam(nn.Module):
-    def __init__(self, model):
+    def __init__(self, model, device=None):
         super(GradCam, self).__init__()
         self.model = model
         self.model.eval()
+        self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Move model to the specified device if needed
+        if next(self.model.parameters()).device != self.device:
+            print(f"Moving GradCam model to {self.device}")
+            self.model = self.model.to(self.device)
 
         for m in self.model.modules():
             if isinstance(m, AttBranch):
