@@ -51,15 +51,17 @@ CORS_ORIGINS_DEFAULT = "*"
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
+
     # Get the base directory of the project
     BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
     # Load environment variables from .env file
-    env_path = BASE_DIR / '.env'
+    env_path = BASE_DIR / ".env"
     load_dotenv(dotenv_path=env_path)
     logging.info(f"Loaded environment variables from {env_path}")
 except ImportError:
     logging.warning(
-        "python-dotenv package not installed. Using environment variables from system.")
+        "python-dotenv package not installed. Using environment variables from system."
+    )
 except Exception as e:
     logging.warning(f"Failed to load .env file: {e}")
 
@@ -83,11 +85,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Folder Configuration
 FOLDERS = {
-    "UPLOAD": os.getenv(
-        "UPLOAD_FOLDER", "../backend/src/data/dicom/uploads"),
-    "RESULTS": os.getenv(
-        "RESULTS_FOLDER", "../backend/src/data/dicom/results"),
+    "UPLOAD": os.path.join(BASE_DIR, "uploads"),
+    "RESULTS": os.path.join(BASE_DIR, "results"),
     "LOGS": os.path.join(BASE_DIR, "logs"),
+    "CLEANUP_FOLDER": os.path.join(BASE_DIR, "cleanup_folder"),
 }
 
 FOLDERS_DETECTOR = "./detector"
@@ -101,8 +102,7 @@ os.makedirs(FOLDERS_DETECTOR, exist_ok=True)
 # File Configuration
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", MAX_FILE_SIZE_DEFAULT))  # 100MB
 ALLOWED_EXTENSIONS = {".dcm"}
-FILE_RETENTION = int(
-    os.getenv("FILE_RETENTION", FILE_RETENTION_DEFAULT))  # 1 hour
+FILE_RETENTION = int(os.getenv("FILE_RETENTION", FILE_RETENTION_DEFAULT))  # 1 hour
 
 
 # Model Configuration
@@ -112,21 +112,26 @@ MODEL_ITER = int(os.getenv("MODEL_ITER", MODEL_ITER_DEFAULT))
 CUDA_AVAILABLE = torch.cuda.is_available()
 DEVICE_ENV = os.getenv("DEVICE", DEVICE_DEFAULT)
 CUDA_VISIBLE_DEVICES_ENV = os.getenv(
-    "CUDA_VISIBLE_DEVICES", CUDA_VISIBLE_DEVICES_DEFAULT)
+    "CUDA_VISIBLE_DEVICES", CUDA_VISIBLE_DEVICES_DEFAULT
+)
 
 # If CUDA is not available or DEVICE is explicitly set to 'cpu', use CPU
 if not CUDA_AVAILABLE or DEVICE_ENV.lower() == "cpu" or not CUDA_VISIBLE_DEVICES_ENV:
     ACTUAL_DEVICE = "cpu"
     print(
-        f"Using CPU for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}")
+        f"Using CPU for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}"
+    )
 else:
     ACTUAL_DEVICE = "cuda"
     print(
-        f"Using CUDA for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}")
+        f"Using CUDA for model inference. CUDA available: {CUDA_AVAILABLE}, DEVICE: {DEVICE_ENV}, CUDA_VISIBLE_DEVICES: {CUDA_VISIBLE_DEVICES_ENV}"
+    )
 
 MODEL_CONFIG = {
     "CHECKPOINT_PATH": os.path.join(
-        BASE_DIR, "checkpoint", f"NLST-Tri2DNet_True_0.0001_16-00{MODEL_ITER}-encoder.ptm"
+        BASE_DIR,
+        "checkpoint",
+        f"NLST-Tri2DNet_True_0.0001_16-00{MODEL_ITER}-encoder.ptm",
     ),
     "MODEL_PATH": os.path.join(BASE_DIR, "checkpoint"),
     "RETINANET_PATH": os.path.join(BASE_DIR, "checkpoint", "retinanet_heart.pt"),
@@ -135,7 +140,7 @@ MODEL_CONFIG = {
     "DETECTION_METHODS": ["auto", "model", "simple"],
     "DEFAULT_DETECTION_METHOD": "auto",
     "VISUALIZE_DEFAULT": True,
-    "ITER": MODEL_ITER  # Model iteration checkpoint
+    "ITER": MODEL_ITER,  # Model iteration checkpoint
 }
 
 # Logging Configuration
@@ -163,11 +168,16 @@ ERROR_MESSAGES = {
 
 # Cleanup Configuration
 CLEANUP_CONFIG = {
-    "ENABLED": os.getenv("CLEANUP_ENABLED", CLEANUP_ENABLED_DEFAULT).lower() in ("true", "1", "yes"),
+    "ENABLED": os.getenv("CLEANUP_ENABLED", CLEANUP_ENABLED_DEFAULT).lower()
+    in ("true", "1", "yes"),
     # Run cleanup every 3 hours
-    "INTERVAL_HOURS": int(os.getenv("CLEANUP_INTERVAL_HOURS", CLEANUP_INTERVAL_HOURS_DEFAULT)),
+    "INTERVAL_HOURS": int(
+        os.getenv("CLEANUP_INTERVAL_HOURS", CLEANUP_INTERVAL_HOURS_DEFAULT)
+    ),
     # Keep files for 1 days
-    "MAX_AGE_DAYS": int(os.getenv("CLEANUP_MAX_AGE_DAYS", CLEANUP_MAX_AGE_DAYS_DEFAULT)),
+    "MAX_AGE_DAYS": int(
+        os.getenv("CLEANUP_MAX_AGE_DAYS", CLEANUP_MAX_AGE_DAYS_DEFAULT)
+    ),
     "PATTERNS": {
         "UPLOAD": "*.dcm",
         "RESULTS": "*.zip",
@@ -184,12 +194,14 @@ allowed_ips = [ip.strip() for ip in allowed_ips_str.split(",") if ip.strip()]
 
 # Parse comma-separated list of allowed origins for CORS
 cors_origins_str = os.getenv(
-    "CORS_ORIGINS", CORS_ORIGINS_DEFAULT if IS_DEV else "https://example.com")
+    "CORS_ORIGINS", CORS_ORIGINS_DEFAULT if IS_DEV else "https://example.com"
+)
 if cors_origins_str == "*":
     cors_origins = ["*"]
 else:
-    cors_origins = [origin.strip()
-                    for origin in cors_origins_str.split(",") if origin.strip()]
+    cors_origins = [
+        origin.strip() for origin in cors_origins_str.split(",") if origin.strip()
+    ]
 
 SECURITY_CONFIG = {
     "ALLOWED_IPS": allowed_ips,

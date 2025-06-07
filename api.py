@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import FOLDERS, API_TITLE, API_DESCRIPTION, API_VERSION, SECURITY_CONFIG
 from logger import setup_logger
-from utils import get_local_ip
+from utils import cleanup_old_files, get_local_ip
 from call_model import load_model
 
 # Set up logger with date-based organization
@@ -25,7 +25,9 @@ async def lifespan(_: FastAPI):
     """
     global heart_detector, model
 
-    # Startup: Load models
+    # Startup: Load models and clean up old directories
+    cleanup_old_files([FOLDERS["CLEANUP_FOLDER"]])
+    # cleanup_old_files([FOLDERS["UPLOAD"], FOLDERS["RESULTS"]])
 
     # Only load models if they haven't been loaded yet
     if heart_detector is None or model is None:
@@ -35,12 +37,16 @@ async def lifespan(_: FastAPI):
 
             # Log model status
             if heart_detector is None:
-                logger.warning("Heart detector model not loaded. Will use simple method for heart detection.")
+                logger.warning(
+                    "Heart detector model not loaded. Will use simple method for heart detection."
+                )
             else:
                 logger.info("Heart detector model loaded successfully.")
 
             if model is None:
-                logger.warning("CVD risk prediction model not loaded. API will return errors for prediction requests.")
+                logger.warning(
+                    "CVD risk prediction model not loaded. API will return errors for prediction requests."
+                )
             else:
                 logger.info("CVD risk prediction model loaded successfully.")
 
@@ -51,6 +57,7 @@ async def lifespan(_: FastAPI):
 
     # Update the models in the routes module
     import routes
+
     routes.heart_detector = heart_detector
     routes.model = model
 
@@ -83,6 +90,7 @@ app.mount("/results", StaticFiles(directory=FOLDERS["RESULTS"]), name="results")
 
 # Include the router
 from routes import router
+
 app.include_router(router)
 
 
