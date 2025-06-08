@@ -1,7 +1,10 @@
 import torch
 import os
-from datetime import timedelta
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Environment Configuration
 ENV_DEFAULT = "dev"
@@ -19,13 +22,15 @@ BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 
 # Folder Configuration
 FOLDERS = {
-    "UPLOAD": os.path.join(BASE_DIR, "uploads"),
-    "RESULTS": os.path.join(BASE_DIR, "results"),
+    "UPLOAD": os.getenv("UPLOAD_FOLDER", os.path.join(BASE_DIR, "uploads")),
+    "RESULTS": os.getenv("RESULTS_FOLDER", os.path.join(BASE_DIR, "results")),
     "LOGS": os.path.join(BASE_DIR, "logs"),
-    "CLEANUP": os.path.join(BASE_DIR, "cleanup_folder"),
+    "CLEANUP": os.getenv("CLEANUP_FOLDER", os.path.join(BASE_DIR, "cleanup_folder")),
     "DETECTOR": os.path.join(BASE_DIR, "detector"),
     "CHECKPOINT": os.path.join(BASE_DIR, "checkpoint"),
 }
+
+# print("FOLDERS CONFIG:", FOLDERS)
 
 # Create necessary directories
 for folder in FOLDERS.values():
@@ -92,14 +97,9 @@ LOG_CONFIG = {
 
 # Error Messages
 ERROR_MESSAGES = {
-    "invalid_file": "Invalid file format. Only DICOM files are allowed.",
-    "file_too_large": f"File size exceeds the maximum allowed size of {MAX_FILE_SIZE / (1024 * 1024)}MB.",
-    "model_not_found": "Model checkpoint not found. Please ensure the model is properly installed.",
-    "processing_error": "Error processing the DICOM files. Please check the file format and try again.",
-    "server_error": "Internal server error. Please try again later.",
-    "invalid_session": "Session has expired or does not exist.",
-    "file_not_found": "Requested file not found.",
-    "unauthorized": "Unauthorized access. Please provide a valid API key.",
+    "invalid_file": "Invalid file format. Only ZIP is allowed.",
+    "model_not_found": "Model not found. Please check the model path.",
+    "processing_error": "Error processing the file. Please try again.",
 }
 
 # Cleanup Configuration
