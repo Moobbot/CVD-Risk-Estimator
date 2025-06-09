@@ -1,6 +1,41 @@
 # Configuration Options
 
-This document explains how to configure the application using environment variables or the `.env` file.
+This file provides a quick reference for the available configuration options. For detailed configuration documentation, see [Configuration Guide](docs/configuration.md).
+
+## Quick Reference
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ENV` | Application environment (dev, test, prod) | `dev` |
+| `PORT` | Port number for the server | `5556` |
+| `DEVICE` | Device to use for model inference (cuda, cpu) | `cuda` if available, auto-fallback to `cpu` |
+| `CUDA_VISIBLE_DEVICES` | CUDA device indices to use | `0` (set empty to force CPU) |
+| `MODEL_ITER` | Model iteration checkpoint to load | `700` |
+| `LOG_LEVEL` | Logging level | `DEBUG` in dev, `INFO` otherwise |
+| `CLEANUP_ENABLED` | Enable automatic cleanup of old files | `true` |
+
+## Example .env File
+
+```env
+# Environment
+ENV=dev
+PORT=5556
+
+# Device Configuration
+DEVICE=cuda
+CUDA_VISIBLE_DEVICES=0
+
+# Model Configuration
+MODEL_ITER=700
+
+# Logging
+LOG_LEVEL=DEBUG
+
+# Cleanup
+CLEANUP_ENABLED=true
+```
+
+For more detailed information about each configuration option and advanced usage, please refer to the [Configuration Guide](docs/configuration.md).
 
 ## Configuration System
 
@@ -118,118 +153,3 @@ This organization makes it easy to find logs for specific dates and prevents log
 
 - `ALLOWED_IPS`: Comma-separated list of allowed IPs or CIDR notations
   - Default: `127.0.0.1,192.168.1.0/24,10.0.0.0/8`
-- `CORS_ORIGINS`: Comma-separated list of allowed origins for CORS
-  - Default: `*` in dev environment, `https://example.com` otherwise
-
-## Example .env File (Optional)
-
-You can create a `.env` file to override default values. This is completely optional as all configuration options have default values defined in `config.py`.
-
-```.env
-# Environment Configuration
-# Options: dev, test, prod
-ENV=dev
-
-# Server Configuration
-HOST_CONNECT=0.0.0.0
-PORT=5556
-
-# File Configuration
-# 100MB in bytes
-MAX_FILE_SIZE=104857600
-# File retention period in hours
-FILE_RETENTION=1
-
-# Model Configuration
-BATCH_SIZE=16
-# Options: cuda, cpu
-DEVICE=cuda
-# Set to empty to use CPU
-CUDA_VISIBLE_DEVICES=0
-# Model iteration checkpoint to load
-MODEL_ITER=700
-
-# Logging Configuration
-# Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
-LOG_LEVEL=DEBUG
-# 10MB in bytes
-LOG_MAX_BYTES=10485760
-LOG_BACKUP_COUNT=5
-
-# Cleanup Configuration
-CLEANUP_ENABLED=true
-CLEANUP_INTERVAL_HOURS=3
-CLEANUP_MAX_AGE_DAYS=1
-
-# Security Configuration
-# Comma-separated list of allowed IPs or CIDR notations
-ALLOWED_IPS=127.0.0.1,192.168.1.0/24,10.0.0.0/8
-# Comma-separated list of allowed origins for CORS
-CORS_ORIGINS=*
-```
-
-## Important Notes
-
-### Comments in .env Files
-
-When adding comments to your environment variables in a `.env` file, make sure to place them on a separate line **above** the variable, not on the same line. For example:
-
-```plaintext
-# Correct: Comment on a separate line
-# This is the port number
-PORT=5556
-
-# Incorrect: Comment on the same line
-PORT=5556  # This is the port number
-```
-
-This is because when the environment variables are loaded, any text after the value (including comments) will be considered part of the value, which can cause parsing errors.
-
-### Configuration Precedence
-
-The configuration system follows this precedence order (highest to lowest):
-
-1. Environment variables set in the system or container
-2. Values in the `.env` file (if it exists)
-3. Default values defined in `config.py`
-
-This means you can run the application without any external configuration, and it will use the default values defined in the code.
-
-### GPU/CPU Configuration
-
-The application includes an intelligent device selection system:
-
-1. **Automatic Detection**: The system checks if CUDA is available during startup
-2. **Configuration-Based Selection**: Uses the `DEVICE` and `CUDA_VISIBLE_DEVICES` settings
-3. **Fallback Mechanism**: Automatically falls back to CPU if CUDA is not available
-
-#### Forcing CPU Mode
-
-You can force CPU mode in several ways:
-
-```bash
-# Method 1: Set DEVICE to cpu
-DEVICE=cpu python api.py
-
-# Method 2: Set CUDA_VISIBLE_DEVICES to empty
-CUDA_VISIBLE_DEVICES= python api.py
-
-# Method 3: In .env file
-DEVICE=cpu
-```
-
-#### Forcing GPU Mode
-
-To explicitly use GPU (will fail if CUDA is not available):
-
-```bash
-DEVICE=cuda python api.py
-```
-
-#### Multi-GPU Systems
-
-On systems with multiple GPUs, you can select a specific GPU:
-
-```bash
-CUDA_VISIBLE_DEVICES=1 python api.py  # Use second GPU
-```

@@ -1,6 +1,55 @@
-# Hướng dẫn sử dụng Docker với CVD Risk Estimator
+# Hướng Dẫn Triển Khai Docker
 
-Tài liệu này hướng dẫn cách sử dụng Docker để triển khai ứng dụng CVD Risk Estimator trong cả môi trường có GPU và không có GPU.
+Hướng dẫn này cung cấp các hướng dẫn nhanh để triển khai CVD Risk Estimator bằng Docker. Để biết thêm thông tin chi tiết về triển khai, xem [Hướng Dẫn Triển Khai](docs/deployment.md).
+
+## Yêu Cầu
+
+- Đã cài đặt Docker và Docker Compose
+- NVIDIA Container Toolkit (để hỗ trợ GPU)
+- Đã cài đặt driver NVIDIA (để hỗ trợ GPU)
+
+## Bắt Đầu Nhanh
+
+### Với GPU
+
+```bash
+# Build và chạy container với GPU
+docker-compose up -d
+
+# Xem logs
+docker-compose logs -f
+
+# Dừng container
+docker-compose down
+```
+
+### Không Có GPU
+
+```bash
+# Sử dụng service CPU trong docker-compose.yml
+docker-compose up -d app-cpu
+
+# Xem logs
+docker-compose logs -f cvd-risk-estimator-cpu
+
+# Dừng container
+docker-compose down
+```
+
+## Cấu Hình Docker
+
+Cấu hình Docker bao gồm:
+
+- Image cơ sở Python 3.10
+- Các thư viện hệ thống cần thiết (ffmpeg, libsm6, libxext6)
+- Môi trường ảo để quản lý dependencies sạch sẽ
+- Tối ưu kích thước image bằng multi-stage builds
+- Người dùng không phải root để tăng cường bảo mật
+- Volume mounts để lưu trữ dữ liệu liên tục
+- Cấu hình biến môi trường
+- Hỗ trợ GPU bằng NVIDIA Container Toolkit
+
+Để biết thêm thông tin chi tiết về triển khai Docker, cấu hình và xử lý sự cố, vui lòng tham khảo [Hướng Dẫn Triển Khai](docs/deployment.md).
 
 ## Tính năng chính
 
@@ -11,68 +60,6 @@ Tài liệu này hướng dẫn cách sử dụng Docker để triển khai ứn
 - Tổ chức logs theo cấu trúc năm/tháng/ngày
 - Tự động chuyển sang chế độ CPU khi không có GPU
 - Tối ưu hóa việc tải mô hình trong quá trình khởi động
-
-## Yêu cầu
-
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/) (tùy chọn, nhưng được khuyến nghị)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (chỉ khi sử dụng GPU)
-
-## Cách sử dụng
-
-### 1. Xây dựng và chạy với Docker Compose (Khuyến nghị)
-
-Docker Compose giúp quản lý container dễ dàng hơn và cho phép cấu hình thông qua file `docker-compose.yml`.
-
-#### Với GPU
-
-```bash
-# Xây dựng và khởi động container với GPU
-docker-compose up -d
-
-# Xem logs
-docker-compose logs -f
-
-# Dừng container
-docker-compose down
-```
-
-#### Không có GPU
-
-```bash
-# Sử dụng dịch vụ CPU trong docker-compose.yml
-docker-compose up -d app-cpu
-
-# Xem logs
-docker-compose logs -f cvd-risk-estimator-cpu
-
-# Dừng container
-docker-compose down
-```
-
-### 2. Xây dựng và chạy với Docker
-
-Nếu bạn không sử dụng Docker Compose, bạn có thể sử dụng các lệnh Docker trực tiếp:
-
-#### Sử dụng GPU
-
-```bash
-# Xây dựng image
-docker build -t cvd-risk-estimator .
-
-# Chạy container với GPU
-docker run --gpus all -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env --name cvd-risk-estimator -d cvd-risk-estimator
-```
-
-#### Sử dụng CPU
-
-```bash
-# Xây dựng image (cùng image với GPU)
-docker build -t cvd-risk-estimator .
-
-# Chạy container với CPU (chỉ định biến môi trường DEVICE=cpu)
-docker run -p 5556:5556 -v $(pwd)/checkpoint:/app/checkpoint -v $(pwd)/logs:/app/logs -v $(pwd)/uploads:/app/uploads -v $(pwd)/results:/app/results -v $(pwd)/.env:/app/.env -e DEVICE=cpu -e CUDA_VISIBLE_DEVICES= --name cvd-risk-estimator-cpu -d cvd-risk-estimator
-```
 
 ## Cấu hình
 
