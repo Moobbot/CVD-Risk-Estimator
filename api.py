@@ -7,7 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from config import FOLDERS, API_TITLE, API_DESCRIPTION, API_VERSION, SECURITY_CONFIG
+from config import (
+    FOLDERS,
+    API_CONFIG,
+    SECURITY_CONFIG,
+    HOST_CONNECT,
+    PORT_CONNECT,
+    IS_DEV,
+)
 from logger import setup_logger
 from utils import cleanup_old_files, get_local_ip
 from call_model import load_model
@@ -26,7 +33,8 @@ async def lifespan(_: FastAPI):
     global heart_detector, model
 
     # Startup: Load models and clean up old directories
-    cleanup_old_files([FOLDERS["UPLOAD"], FOLDERS["RESULTS"]])
+    cleanup_old_files([FOLDERS["CLEANUP"]])
+    # cleanup_old_files([FOLDERS["UPLOAD"], FOLDERS["RESULTS"]])
 
     # Only load models if they haven't been loaded yet
     if heart_detector is None or model is None:
@@ -36,12 +44,16 @@ async def lifespan(_: FastAPI):
 
             # Log model status
             if heart_detector is None:
-                logger.warning("Heart detector model not loaded. Will use simple method for heart detection.")
+                logger.warning(
+                    "Heart detector model not loaded. Will use simple method for heart detection."
+                )
             else:
                 logger.info("Heart detector model loaded successfully.")
 
             if model is None:
-                logger.warning("CVD risk prediction model not loaded. API will return errors for prediction requests.")
+                logger.warning(
+                    "CVD risk prediction model not loaded. API will return errors for prediction requests."
+                )
             else:
                 logger.info("CVD risk prediction model loaded successfully.")
 
@@ -52,6 +64,7 @@ async def lifespan(_: FastAPI):
 
     # Update the models in the routes module
     import routes
+
     routes.heart_detector = heart_detector
     routes.model = model
 
@@ -67,7 +80,10 @@ model = None
 
 # Khởi tạo ứng dụng FastAPI with lifespan
 app = FastAPI(
-    title=API_TITLE, description=API_DESCRIPTION, version=API_VERSION, lifespan=lifespan
+    title=API_CONFIG["TITLE"],
+    description=API_CONFIG["DESCRIPTION"],
+    version=API_CONFIG["VERSION"],
+    lifespan=lifespan,
 )
 
 # Cấu hình CORS
@@ -84,13 +100,13 @@ app.mount("/results", StaticFiles(directory=FOLDERS["RESULTS"]), name="results")
 
 # Include the router
 from routes import router
+
 app.include_router(router)
 
 
 if __name__ == "__main__":
     import uvicorn
     import socket
-    from config import HOST_CONNECT, PORT_CONNECT
 
     custom_port = PORT_CONNECT
 
@@ -108,4 +124,4 @@ if __name__ == "__main__":
     print(f"Running on: http://{LOCAL_IP}:{custom_port} (local network)")
 
     # Run without reload to avoid loading models twice
-    uvicorn.run("api:app", host=HOST_CONNECT, port=custom_port, reload=False)
+    uvicorn.run("api:app", host=HOST_CONNECT, port=custom_port, reload=IS_DEV)

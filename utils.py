@@ -24,6 +24,7 @@ from config import (
     MAX_FILE_SIZE,
     ALLOWED_EXTENSIONS,
     ERROR_MESSAGES,
+    CLEANUP_CONFIG,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,9 @@ def cleanup_old_files(folders: List[str], expiry_time=FILE_RETENTION) -> None:
         folders (List): List of folders to be checked.
         expiry_time (int): expiry period (hour). The default is 1 hour.
     """
+    if not CLEANUP_CONFIG["ENABLED"]:
+        return
+
     cutoff_date = datetime.now() - timedelta(hours=expiry_time)
 
     for folder in folders:
