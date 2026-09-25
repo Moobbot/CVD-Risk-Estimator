@@ -13,7 +13,7 @@ from logger import setup_logger
 from utils import create_zip_result
 from fastapi.concurrency import run_in_threadpool
 from call_model import predict as _predict_unserialized
-from inference_gate import serialized, status as inference_status
+from inference_gate import serialized, start_watchdog, status as inference_status
 
 # Cấu hình SimpleITK
 sitk.ProcessObject.SetGlobalDefaultThreader("platform")
@@ -30,13 +30,22 @@ model = None
 
 # Moi lan suy luan chay noi tiep (xem inference_gate.py).
 predict = serialized(_predict_unserialized)
+start_watchdog()
 
 
 @router.get("/health")
 async def health() -> JSONResponse:
     """Song hay chet, ranh hay ban. Tra loi ngay ca khi dang suy luan vi
-    suy luan chay trong threadpool, khong chan event loop."""
-    return JSONResponse({"status": "ok", "model_loaded": model is not None, **inference_status()})
+    suy luan chay trong threadpool, khong chan event loop.
+
+    503 khi model chua nap (load_model loi -> model=None) hoac ca dang chay bi
+    TREO. Truoc day nap model loi van bao "ok" va duoc coi la kha dung.
+    """
+    st = inference_status()
+    loaded = model is not None
+    ok = loaded and not st["stuck"]
+    body = {"status": "ok" if ok else "unhealthy", "model_loaded": loaded, **st}
+    return JSONResponse(body, status_code=200 if ok else 503)
 
 
 @router.post("/api_predict")
