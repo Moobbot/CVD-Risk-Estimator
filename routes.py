@@ -27,6 +27,17 @@ router = APIRouter()
 # Global variables for models (will be set by the main app)
 heart_detector = None
 model = None
+# P4c: dat boi api.py luc nap model (model_info.build_info).
+MODEL_INFO: dict = {"model": "cvd", "loaded": False, "version": None}
+
+
+def _case_version(pred_dict: dict) -> str | None:
+    """Phien ban cua CA NAY: them `+det.simple` neu ca nay do tim bang cach
+    "simple" (detector khong chay duoc o ca nay)."""
+    base = MODEL_INFO.get("version")
+    if base and pred_dict.get("heart_detection") == "simple":
+        return f"{base}+det.simple"
+    return base
 
 # Moi lan suy luan chay noi tiep (xem inference_gate.py).
 predict = serialized(_predict_unserialized)
@@ -46,6 +57,14 @@ async def health() -> JSONResponse:
     ok = loaded and not st["stuck"]
     body = {"status": "ok" if ok else "unhealthy", "model_loaded": loaded, **st}
     return JSONResponse(body, status_code=200 if ok else 503)
+
+
+@router.get("/info")
+async def info() -> JSONResponse:
+    """P4c: phien ban mo hinh dang chay. Chi ten file trong so (khong duong dan)."""
+    if model is None or not MODEL_INFO.get("version"):
+        return JSONResponse({"model": "cvd", "loaded": False, "version": None}, status_code=503)
+    return JSONResponse(MODEL_INFO)
 
 
 @router.post("/api_predict")
@@ -115,6 +134,7 @@ async def api_predict(request: Request) -> JSONResponse:
             "predictions": pred_dict["predictions"],
             "attention_info": attention_info,
             "message": "Prediction successful.",
+            "model_version": _case_version(pred_dict),
         }
         logger.info(f"Prediction {session_id} successful.")
         return JSONResponse(response)
@@ -267,6 +287,7 @@ async def api_predict_zip(
                 "overlay_gif": gif_download_link,
                 "attention_info": attention_info,
                 "message": "Prediction successful.",
+                "model_version": _case_version(pred_dict),
             }
 
             logger.info(f"Prediction {session_id} successful.")

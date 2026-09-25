@@ -179,6 +179,15 @@ def predict(
     )
 
     # Create prediction dictionary
-    prediction_dict = {"predictions": [{"score": float(score)}]}
+    # P4c: heart_detector.detect() tu roi ve cach "simple" O TUNG CA (nhanh
+    # except, hoac nap lai model loi). Doc cach da dung TUONG MINH (last_method);
+    # visual_bbox=None chi la du phong neu detector khong ghi.
+    method = getattr(getattr(img, "heart_detector", None), "last_method", None)
+    if method not in ("model", "simple"):
+        method = "simple" if img.visual_bbox is None else "model"
+    prediction_dict = {
+        "predictions": [{"score": float(score)}],
+        "heart_detection": method,
+    }
 
     return prediction_dict, attention_info, gif_path

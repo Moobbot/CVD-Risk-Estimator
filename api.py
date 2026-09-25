@@ -18,6 +18,8 @@ from config import (
 from logger import setup_logger
 from utils import cleanup_old_files, get_local_ip
 from call_model import load_model
+from model_info import build_info, source_digest
+from config import MODEL_CONFIG
 
 # Set up logger with date-based organization
 logger = setup_logger("api")
@@ -67,11 +69,38 @@ async def lifespan(_: FastAPI):
 
     routes.heart_detector = heart_detector
     routes.model = model
+    try:
+        routes.MODEL_INFO = _build_model_info(heart_detector, model)
+    except Exception as e:
+        # Dinh danh phien ban loi KHONG duoc lam service khong khoi dong duoc:
+        # version=None -> backend ghi "unknown".
+        logger.error(f"Khong dung duoc dinh danh phien ban: {e}")
+        routes.MODEL_INFO = {"model": "cvd", "loaded": model is not None, "version": None}
+    logger.info(f"[model_info] {routes.MODEL_INFO.get('version')}")
 
     yield  # This is where FastAPI runs
 
     # Shutdown: Clean up resources if needed
     logger.info("Application shutting down...")
+
+
+def _build_model_info(heart_detector, model):
+    """P4c: dinh danh DUNG trong so + ma suy luan da nap (xem model_info.py)."""
+    if model is None:
+        return {"model": "cvd", "loaded": False, "version": None}
+    base = os.path.dirname(os.path.abspath(__file__))
+    src = source_digest([os.path.join(base, p) for p in (
+        "tri_2d_net", "detector", "call_model.py", "image.py",
+        "heart_detector.py", "bbox_cut.py", "utils.py", "config.py")])
+    code = f"iter{MODEL_CONFIG['ITER']}.src.{src[:8] if src else 'unknown'}"
+    weights = [getattr(model, "loaded_checkpoint_path", None)]
+    if os.path.exists(MODEL_CONFIG["RETINANET_PATH"]):
+        weights.append(MODEL_CONFIG["RETINANET_PATH"])
+    info = build_info("cvd", code, [w for w in weights if w] if all(weights) else [], [], MODEL_CONFIG["DEVICE"])
+    # Detector nap duoc luc khoi dong hay khong — chi de hien; cach dung THAT
+    # cua tung ca nam o co `+det.simple` trong model_version cua response.
+    info["heart_detector_loaded"] = bool(heart_detector is not None and getattr(heart_detector, "model", None) is not None)
+    return info
 
 
 # Initialize global model variables

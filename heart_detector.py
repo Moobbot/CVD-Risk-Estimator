@@ -22,6 +22,9 @@ if detector_path not in sys.path:
 class HeartDetector:
     def __init__(self):
         self.model = None
+        # P4c: cach phat hien tim cua LAN detect() gan nhat: "model" | "simple".
+        # Suy luan chay noi tiep (inference_gate) nen gia tri nay la cua dung ca.
+        self.last_method = None
         # Use the device from MODEL_CONFIG for consistency
         self.device = torch.device(MODEL_CONFIG["DEVICE"])
         print(f"Heart detector using device: {self.device}")
@@ -152,6 +155,7 @@ class HeartDetector:
             bbox_selected: Danh sách chỉ định slice nào chứa tim
             visual_bbox: Danh sách ảnh đã được vẽ bounding box
         """
+        self.last_method = None  # P4c: khong de gia tri cua ca truoc sot lai
         if self.model is None:
             if not self.load_model():
                 print("Không thể tải mô hình, sử dụng phương pháp đơn giản")
@@ -173,6 +177,7 @@ class HeartDetector:
                         bbox_selected[i] = 1
 
                 # Không tạo visual_bbox khi sử dụng phương pháp đơn giản
+                self.last_method = "simple"
                 return bbox_list, bbox_selected, None
 
         frame_num = whole_img.shape[0]
@@ -220,6 +225,7 @@ class HeartDetector:
 
             bbox_list = np.array(bbox_list)
             bbox_selected = self.__continue_smooth(bbox_selected)
+            self.last_method = "model"
             return bbox_list, bbox_selected, visual_bbox
 
         except Exception as e:
@@ -241,6 +247,7 @@ class HeartDetector:
                     bbox_list[i] = [x_min, y_min, x_max, y_max]
                     bbox_selected[i] = 1
 
+            self.last_method = "simple"
             return bbox_list, bbox_selected, None
 
     def debug_detection(self, ct_volume):
