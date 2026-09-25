@@ -38,15 +38,117 @@ docker-compose down
 
 ## Docker Configuration
 
-The Docker configuration includes:
+The current image (`Dockerfile`):
 
-- Python 3.10 base image
-- Required system libraries (ffmpeg, libsm6, libxext6)
-- Virtual environment for clean dependency management
-- Optimized image size using multi-stage builds
-- Non-root user for improved security
-- Volume mounts for persistent data storage
-- Environment variable configuration
-- GPU support using NVIDIA Container Toolkit
+- Uses the `python:3.10` base image (single stage, runs as root)
+- Installs the required system libraries (ffmpeg, libsm6, libxext6)
+- Installs the Python dependencies with `python setup.py`
+- Is configured through environment variables
+- Supports the GPU through the NVIDIA Container Toolkit
+
+Persistent data lives in volume mounts (see [Volumes](#volumes)).
 
 For more detailed information about Docker deployment, configuration, and troubleshooting, please refer to the [Deployment Guide](docs/deployment.md).
+
+## Main Features
+
+- Cardiovascular disease risk prediction from DICOM images
+- Automatic heart region detection with RetinaNet, or a simple fallback method
+- Grad-CAM images to explain the result
+- Animated GIF built directly from the Grad-CAM images
+- Logs organised by year/month/day
+- Automatic switch to CPU mode when no GPU is available
+- Model loading optimised during startup
+
+## Configuration
+
+### Environment variables
+
+You can configure the application by editing the `.env` file or through the environment variables in `docker-compose.yml`:
+
+```yaml
+environment:
+  - ENV=prod
+  - HOST_CONNECT=0.0.0.0
+  - PORT=5556
+  - CUDA_VISIBLE_DEVICES=0
+  - DEVICE=cuda
+```
+
+### Volumes
+
+The following volumes keep data between container runs:
+
+- `./checkpoint:/app/checkpoint`: downloaded models
+- `./logs:/app/logs`: application logs (organised by year/month/day)
+- `./uploads:/app/uploads`: temporary uploaded files
+- `./results:/app/results`: prediction results and GIF files
+- `./.env:/app/.env`: environment configuration file
+
+#### Log layout
+
+Logs are organised automatically by year/month, with file names based on the date:
+
+```plaintext
+logs/
+├── 2023/
+│   ├── 01/
+│   │   ├── api_2023-01-01.log
+│   │   ├── api_2023-01-02.log
+│   │   └── ...
+│   └── ...
+└── ...
+```
+
+This layout makes it easy to find the logs for a given day and keeps log files from growing too large.
+
+## Troubleshooting
+
+### The GPU cannot be used
+
+If you get GPU-related errors, make sure that:
+
+1. The NVIDIA Container Toolkit is installed correctly
+2. The NVIDIA driver is installed and working
+3. `nvidia-smi` works
+
+The Docker Compose file is already configured to access the GPU using the modern Docker Compose format:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+```
+
+If the problem persists, you can switch to CPU mode by:
+
+1. Using the CPU service in docker-compose.yml: `docker-compose up -d app-cpu`
+2. Or setting `DEVICE=cpu` in the environment variables of an existing container
+
+Note that CPU mode is much slower for inference, but lets the application run on any machine without a GPU.
+
+### Errors while loading the model
+
+If you get errors while loading the model, make sure that:
+
+1. The model files have been downloaded into the `checkpoint` folder
+2. The `checkpoint` folder is mounted correctly into the container
+
+## Performance
+
+To improve performance, you can:
+
+1. Increase `BATCH_SIZE` if there is enough GPU memory
+2. Use `--shm-size` to increase shared memory when running the container
+
+## Production Deployment
+
+When deploying to production, make sure to:
+
+1. Set `ENV=prod` to disable debug features
+2. Configure `CORS_ORIGINS` to allow only trusted origins
+3. Use a reverse proxy such as Nginx for HTTPS and load balancing

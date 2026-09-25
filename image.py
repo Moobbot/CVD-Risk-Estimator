@@ -8,11 +8,11 @@ import cv2
 import imageio
 from scipy.ndimage import gaussian_filter
 from skimage.transform import resize as imresize
-import pydicom  # Thêm import pydicom
+import pydicom
 
 from bbox_cut import crop_w_bbox, parse_bbox
 from utils import norm, CT_resize
-from config import CLEANUP_CONFIG, FOLDERS  # Import cấu hình
+from config import CLEANUP_CONFIG, FOLDERS
 
 
 class Image:
@@ -41,7 +41,7 @@ class Image:
 
     def detect_heart(self):
         if self.heart_detector is None:
-            # Sửa lỗi import tương đối
+            # Fix the relative import
             from heart_detector import HeartDetector
             self.heart_detector = HeartDetector()
             self.heart_detector.load_model()
@@ -69,7 +69,7 @@ class Image:
                 self.org_npy)
 
             if self.bbox is None or self.bbox_selected is None:
-                print("Phát hiện tim không thành công, trả về False")
+                print("Heart detection failed, returning False")
                 return False
 
             # Save min and max points for mapping back to original image
@@ -78,28 +78,28 @@ class Image:
                 self.min_point, self.max_point = parse_bbox(
                     self.bbox, self.bbox_selected, self.org_ct_img.GetSize(), org_space)
             except Exception as e:
-                print(f"Lỗi khi phân tích bbox: {e}")
-                # Không return False ở đây, tiếp tục thử crop_w_bbox
+                print(f"Error while analysing the bbox: {e}")
+                # Do not return False here, still try crop_w_bbox
 
             # Crop heart region
             self.detected_ct_img = crop_w_bbox(
                 self.org_ct_img, self.bbox, self.bbox_selected)
 
             if self.detected_ct_img is None:
-                print("Không thể cắt vùng tim, trả về False")
+                print("Could not crop the heart region, returning False")
                 return False
 
-            # Lấy tên các file DICOM chứa tim
+            # Get the names of the DICOM files that contain the heart
             self.detected_dicom_names = [v for f, v in zip(
                 self.bbox_selected, self.dicom_names) if f == 1]
 
-            # Chuyển đổi sang numpy array và chuẩn hóa
+            # Convert to a numpy array and normalise
             self.detected_npy = sitk.GetArrayFromImage(self.detected_ct_img)
             self.detected_npy = norm(self.detected_npy, -300, 500)
             return True
 
         except Exception as e:
-            print(f"Lỗi trong quá trình phát hiện tim: {e}")
+            print(f"Error during heart detection: {e}")
             return False
 
     def save_visual_bbox(self, output_folder):
@@ -195,86 +195,86 @@ class Image:
 
     def to_network_input(self):
         """
-        Chuyển đổi dữ liệu đã phát hiện thành đầu vào cho mạng neural
+        Convert the detected data into the neural network input
 
         Returns:
-            numpy.ndarray: Mảng đầu vào cho mạng neural
+            numpy.ndarray: input array for the neural network
         """
         try:
             if self.detected_npy is None:
-                raise ValueError("Chưa phát hiện vùng tim hoặc phát hiện không thành công")
+                raise ValueError("The heart region has not been detected or detection failed")
 
             data = self.detected_npy
 
-            # Tạo mặt nạ dựa trên ngưỡng giá trị
+            # Build a mask from a value threshold
             mask = np.clip(
                 (data > 0.1375).astype('float') * (data < 0.3375).astype('float')
                 + (data > 0.5375).astype('float'), 0, 1)
 
-            # Làm mịn mặt nạ bằng bộ lọc Gaussian
+            # Smooth the mask with a Gaussian filter
             mask = gaussian_filter(mask, sigma=3)
 
-            # Tạo đầu vào cho mạng neural
+            # Build the neural network input
             network_input = np.stack([data, data * mask]).astype('float32')
             return network_input
 
         except Exception as e:
-            print(f"Lỗi khi tạo đầu vào cho mạng neural: {e}")
+            print(f"Error while building the neural network input: {e}")
             raise
 
     def create_gif_from_images(self, images, indices, session_id, output_folder=None):
         """
-        Tạo file GIF trực tiếp từ danh sách ảnh trong bộ nhớ
+        Create a GIF file directly from a list of in-memory images
 
         Args:
-            images: Danh sách các ảnh đã xử lý trong bộ nhớ
-            indices: Danh sách các chỉ số tương ứng với mỗi ảnh
-            session_id: ID của phiên làm việc
-            output_folder: Thư mục để lưu file GIF, nếu None sẽ lưu vào thư mục session_id
+            images: processed in-memory images
+            indices: the index of each image
+            session_id: ID of the session
+            output_folder: folder for the GIF file; if None it is saved in the session_id folder
 
         Returns:
-            str: Đường dẫn đến file GIF đã tạo, hoặc None nếu không thành công
+            str: path to the created GIF file, or None on failure
         """
         try:
-            # Nếu không có output_folder, sử dụng thư mục session_id
+            # Without output_folder, use the session_id folder
             if output_folder is None:
                 output_folder = os.path.join(FOLDERS["RESULTS"], session_id, "cvd")
                 os.makedirs(output_folder, exist_ok=True)
 
-            # Đường dẫn file GIF trong thư mục session_id
+            # Path of the GIF file in the session_id folder
             gif_path = os.path.join(output_folder, "results.gif")
 
             if not images:
                 return None
 
-            # Sắp xếp ảnh theo thứ tự chỉ số
+            # Sort the images by index
             sorted_images = [img for _, img in sorted(zip(indices, images))]
 
-            # Lưu file GIF trực tiếp từ danh sách ảnh trong bộ nhớ
+            # Save the GIF directly from the in-memory images
             imageio.mimsave(gif_path, sorted_images, duration=0.2, loop=0)
 
             return gif_path
 
         except Exception as e:
-            print(f"Lỗi khi tạo GIF từ ảnh trong bộ nhớ: {e}")
+            print(f"Error while creating the GIF from in-memory images: {e}")
             return None
 
     def create_gif_from_overlay_images(self, output_dir, session_id):
         """
-        Tạo file GIF từ các ảnh overlay đã lưu trên đĩa
+        Create a GIF file from the overlay images saved on disk
 
         Args:
-            output_dir: Thư mục chứa các ảnh overlay
-            session_id: ID của phiên làm việc
+            output_dir: folder containing the overlay images
+            session_id: ID of the session
 
         Returns:
-            str: Đường dẫn đến file GIF đã tạo, hoặc None nếu không thành công
+            str: path to the created GIF file, or None on failure
         """
         try:
-            # Lưu file GIF trong cùng thư mục với các ảnh overlay
+            # Save the GIF in the same folder as the overlay images
             gif_path = os.path.join(output_dir, "results.gif")
 
-            # Lấy danh sách các file ảnh PNG
+            # List the PNG image files
             image_files = []
             for file in os.listdir(output_dir):
                 if file.endswith(".png"):
@@ -283,7 +283,7 @@ class Image:
             if not image_files:
                 return None
 
-            # Sắp xếp ảnh theo thứ tự số slice
+            # Sort the images by slice number
             def extract_index(filename):
                 match = re.search(r'^(\d+)_', os.path.basename(filename))
                 if match:
@@ -292,17 +292,17 @@ class Image:
 
             image_files.sort(key=extract_index)
 
-            # Đọc các ảnh và tạo GIF
+            # Read the images and create the GIF
             images = []
             for image_file in image_files:
                 images.append(imageio.imread(image_file))
 
-            # Lưu file GIF
+            # Save the GIF file
             imageio.mimsave(gif_path, images, duration=0.2, loop=0)
 
             return gif_path
 
         except Exception as e:
-            print(f"Lỗi khi tạo GIF từ file: {e}")
+            print(f"Error while creating the GIF from files: {e}")
             return None
 

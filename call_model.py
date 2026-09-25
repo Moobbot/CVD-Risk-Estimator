@@ -179,9 +179,9 @@ def predict(
     )
 
     # Create prediction dictionary
-    # P4c: heart_detector.detect() tu roi ve cach "simple" O TUNG CA (nhanh
-    # except, hoac nap lai model loi). Doc cach da dung TUONG MINH (last_method);
-    # visual_bbox=None chi la du phong neu detector khong ghi.
+    # P4c: heart_detector.detect() falls back to the "simple" method PER CASE (the
+    # except branch, or when reloading the model fails). Read the method used
+    # EXPLICITLY (last_method); visual_bbox=None is only a fallback if the detector did not record it.
     method = getattr(getattr(img, "heart_detector", None), "last_method", None)
     if method not in ("model", "simple"):
         method = "simple" if img.visual_bbox is None else "model"

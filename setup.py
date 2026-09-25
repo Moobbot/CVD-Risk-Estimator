@@ -174,14 +174,14 @@ def download_and_extract_zip(url: str, extract_path: str = ".") -> bool:
 
 def check_gpu():
     """
-    Kiểm tra xem máy có GPU hay không mà không cần PyTorch.
-    Hỗ trợ Windows, Linux, macOS và môi trường Docker.
+    Check whether the machine has a GPU without needing PyTorch.
+    Supports Windows, Linux, macOS and Docker environments.
 
     Returns:
-        list: Danh sách các GPU được phát hiện hoặc None nếu không tìm thấy.
+        list: the detected GPUs, or None if none is found.
     """
     try:
-        # Kiểm tra xem có đang chạy trong Docker không
+        # Check whether we are running inside Docker
         in_docker = (
             os.path.exists("/.dockerenv")
             or os.environ.get("DOCKER_CONTAINER") == "true"
@@ -196,12 +196,12 @@ def check_gpu():
             + (" (Docker)" if in_docker else "")
         )
 
-        # === LINUX và DOCKER ===
+        # === LINUX and DOCKER ===
         if platform.system() == "Linux" or in_docker:
             gpus = []
             logger.info("Checking GPU using Linux methods...")
 
-            # Phương pháp 1: Kiểm tra qua nvidia-smi (tốt nhất cho Docker với NVIDIA GPU)
+            # Method 1: check via nvidia-smi (best for Docker with an NVIDIA GPU)
             try:
                 logger.debug("Trying nvidia-smi method...")
                 output = subprocess.check_output(
@@ -219,7 +219,7 @@ def check_gpu():
                 logger.debug("nvidia-smi method failed")
                 pass
 
-            # Phương pháp 2: Kiểm tra qua lspci
+            # Method 2: check via lspci
             try:
                 logger.debug("Trying lspci method...")
                 output = subprocess.check_output(
@@ -237,7 +237,7 @@ def check_gpu():
                 logger.debug("lspci method failed")
                 pass
 
-            # Phương pháp 3: Kiểm tra thư mục /proc/driver/nvidia
+            # Method 3: check the /proc/driver/nvidia folder
             if os.path.exists("/proc/driver/nvidia/gpus"):
                 try:
                     logger.debug("Checking /proc/driver/nvidia/gpus...")
@@ -251,7 +251,7 @@ def check_gpu():
                     logger.debug("/proc/driver/nvidia/gpus method failed")
                     pass
 
-            # Phương pháp 4: Kiểm tra qua /dev/nvidia*
+            # Method 4: check via /dev/nvidia*
             try:
                 logger.debug("Checking /dev/nvidia* devices...")
                 nvidia_devices = [
@@ -273,7 +273,7 @@ def check_gpu():
         # === WINDOWS ===
         elif platform.system() == "Windows":
             logger.info("Checking GPU using Windows methods...")
-            # Phương pháp 1: Sử dụng WMIC
+            # Method 1: use WMIC
             try:
                 logger.debug("Trying WMIC method...")
                 output = subprocess.check_output(
@@ -293,7 +293,7 @@ def check_gpu():
                 logger.debug("WMIC method failed")
                 pass
 
-            # Phương pháp 2: Sử dụng PowerShell nếu WMIC thất bại
+            # Method 2: use PowerShell if WMIC fails
             try:
                 logger.debug("Trying PowerShell method...")
                 output = subprocess.check_output(
@@ -326,7 +326,7 @@ def check_gpu():
                     universal_newlines=True,
                     stderr=subprocess.STDOUT,
                 )
-                # Tìm kiếm dòng có "Chipset Model" và lấy tên GPU
+                # Find the line with "Chipset Model" and take the GPU name
                 gpu_pattern = re.compile(r"Chipset Model: (.+)")
                 matches = gpu_pattern.findall(output)
                 if matches:
@@ -335,7 +335,7 @@ def check_gpu():
                     )
                     return [f"Chipset Model: {match}" for match in matches]
 
-                # Phương pháp thay thế nếu regex không hoạt động
+                # Alternative method if the regex does not match
                 gpus = [
                     line.strip()
                     for line in output.split("\n")
@@ -350,15 +350,15 @@ def check_gpu():
                 logger.debug("system_profiler method failed")
                 pass
 
-        # === Phương pháp cuối cùng: Kiểm tra biến môi trường ===
+        # === Last resort: check environment variables ===
         logger.info("Checking GPU using environment variables...")
-        # Kiểm tra biến môi trường CUDA_VISIBLE_DEVICES
+        # Check the CUDA_VISIBLE_DEVICES environment variable
         cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
         if cuda_devices and cuda_devices != "-1":
             logger.info(f"Found GPUs via CUDA_VISIBLE_DEVICES: {cuda_devices}")
             return [f"CUDA Device #{dev}" for dev in cuda_devices.split(",")]
 
-        # Kiểm tra biến môi trường GPU_DEVICE_ORDINAL (cho ROCm/AMD)
+        # Check the GPU_DEVICE_ORDINAL environment variable (for ROCm/AMD)
         rocm_devices = os.environ.get("GPU_DEVICE_ORDINAL")
         if rocm_devices:
             logger.info(f"Found GPUs via GPU_DEVICE_ORDINAL: {rocm_devices}")

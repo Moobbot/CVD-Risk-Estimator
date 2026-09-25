@@ -352,8 +352,8 @@ class Model:
             "{}-{:0>5}-encoder.ptm".format(self.save_name, restore_iter),
         )
 
-        # P4c: ghi lai DUNG file da torch.load (duong dan tuong doi theo thu muc
-        # lam viec) de dinh danh phien ban hash dung file do.
+        # P4c: record EXACTLY the file passed to torch.load (path relative to the
+        # working directory) so the version identity hashes that very file.
         self.loaded_checkpoint_path = os.path.abspath(checkpoint_path)
 
         # Load model with appropriate device mapping

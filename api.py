@@ -72,9 +72,9 @@ async def lifespan(_: FastAPI):
     try:
         routes.MODEL_INFO = _build_model_info(heart_detector, model)
     except Exception as e:
-        # Dinh danh phien ban loi KHONG duoc lam service khong khoi dong duoc:
-        # version=None -> backend ghi "unknown".
-        logger.error(f"Khong dung duoc dinh danh phien ban: {e}")
+        # A failing version identity must NOT stop the service from starting:
+        # version=None -> the backend records "unknown".
+        logger.error(f"Could not build the version identity: {e}")
         routes.MODEL_INFO = {"model": "cvd", "loaded": model is not None, "version": None}
     logger.info(f"[model_info] {routes.MODEL_INFO.get('version')}")
 
@@ -85,7 +85,7 @@ async def lifespan(_: FastAPI):
 
 
 def _build_model_info(heart_detector, model):
-    """P4c: dinh danh DUNG trong so + ma suy luan da nap (xem model_info.py)."""
+    """P4c: identify EXACTLY the weights + inference code that were loaded (see model_info.py)."""
     if model is None:
         return {"model": "cvd", "loaded": False, "version": None}
     base = os.path.dirname(os.path.abspath(__file__))
@@ -97,8 +97,8 @@ def _build_model_info(heart_detector, model):
     if os.path.exists(MODEL_CONFIG["RETINANET_PATH"]):
         weights.append(MODEL_CONFIG["RETINANET_PATH"])
     info = build_info("cvd", code, [w for w in weights if w] if all(weights) else [], [], MODEL_CONFIG["DEVICE"])
-    # Detector nap duoc luc khoi dong hay khong — chi de hien; cach dung THAT
-    # cua tung ca nam o co `+det.simple` trong model_version cua response.
+    # Whether the detector loaded at startup — for display only; the method ACTUALLY
+    # used for each case is the `+det.simple` flag in the response's model_version.
     info["heart_detector_loaded"] = bool(heart_detector is not None and getattr(heart_detector, "model", None) is not None)
     return info
 
@@ -107,7 +107,7 @@ def _build_model_info(heart_detector, model):
 heart_detector = None
 model = None
 
-# Khởi tạo ứng dụng FastAPI with lifespan
+# Create the FastAPI application with lifespan
 app = FastAPI(
     title=API_CONFIG["TITLE"],
     description=API_CONFIG["DESCRIPTION"],
@@ -115,7 +115,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Cấu hình CORS
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=SECURITY_CONFIG["CORS_ORIGINS"],
@@ -124,7 +124,7 @@ app.add_middleware(
     allow_headers=SECURITY_CONFIG["CORS_HEADERS"],
 )
 
-# Phục vụ các file tĩnh từ thư mục kết quả
+# Serve static files from the results folder
 app.mount("/results", StaticFiles(directory=FOLDERS["RESULTS"]), name="results")
 
 # Include the router

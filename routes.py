@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from call_model import predict as _predict_unserialized
 from inference_gate import serialized, start_watchdog, status as inference_status
 
-# Cấu hình SimpleITK
+# SimpleITK configuration
 sitk.ProcessObject.SetGlobalDefaultThreader("platform")
 
 # Set up logger with date-based organization
@@ -27,30 +27,30 @@ router = APIRouter()
 # Global variables for models (will be set by the main app)
 heart_detector = None
 model = None
-# P4c: dat boi api.py luc nap model (model_info.build_info).
+# P4c: set by api.py when the model loads (model_info.build_info).
 MODEL_INFO: dict = {"model": "cvd", "loaded": False, "version": None}
 
 
 def _case_version(pred_dict: dict) -> str | None:
-    """Phien ban cua CA NAY: them `+det.simple` neu ca nay do tim bang cach
-    "simple" (detector khong chay duoc o ca nay)."""
+    """The version for THIS case: appends `+det.simple` if this case located the heart
+    with the "simple" method (the detector could not run for this case)."""
     base = MODEL_INFO.get("version")
     if base and pred_dict.get("heart_detection") == "simple":
         return f"{base}+det.simple"
     return base
 
-# Moi lan suy luan chay noi tiep (xem inference_gate.py).
+# Every inference runs one after another (see inference_gate.py).
 predict = serialized(_predict_unserialized)
 start_watchdog()
 
 
 @router.get("/health")
 async def health() -> JSONResponse:
-    """Song hay chet, ranh hay ban. Tra loi ngay ca khi dang suy luan vi
-    suy luan chay trong threadpool, khong chan event loop.
+    """Alive or dead, idle or busy. Answers even during inference, because
+    inference runs in the threadpool and does not block the event loop.
 
-    503 khi model chua nap (load_model loi -> model=None) hoac ca dang chay bi
-    TREO. Truoc day nap model loi van bao "ok" va duoc coi la kha dung.
+    503 when the model is not loaded (load_model failed -> model=None) or the running
+    case is HUNG. Previously a failed model load still reported "ok" and was treated as usable.
     """
     st = inference_status()
     loaded = model is not None
@@ -61,7 +61,7 @@ async def health() -> JSONResponse:
 
 @router.get("/info")
 async def info() -> JSONResponse:
-    """P4c: phien ban mo hinh dang chay. Chi ten file trong so (khong duong dan)."""
+    """P4c: the running model version. Weight file names only (no paths)."""
     if model is None or not MODEL_INFO.get("version"):
         return JSONResponse({"model": "cvd", "loaded": False, "version": None}, status_code=503)
     return JSONResponse(MODEL_INFO)
@@ -70,11 +70,11 @@ async def info() -> JSONResponse:
 @router.post("/api_predict")
 async def api_predict(request: Request) -> JSONResponse:
     """
-    API nhận session_id, truy cập folder đã giải nén sẵn, thực hiện dự đoán
+    API that takes a session_id, opens the already-extracted folder and runs the prediction
     Args:
-        request: Request object (body chứa session_id)
+        request: Request object (the body holds session_id)
     Returns:
-        JSONResponse: Kết quả dự đoán bao gồm điểm rủi ro và đường dẫn đến ảnh kết quả
+        JSONResponse: prediction result with the risk score and the paths to the result images
     """
     logger.info("API predict (session_id) called")
     data = await request.json()
@@ -92,7 +92,7 @@ async def api_predict(request: Request) -> JSONResponse:
 
     os.makedirs(result_uuid_dir, exist_ok=True)
 
-    # Kiểm tra các file sau khi giải nén
+    # Check the files after extraction
     valid_files = []
     for root, _, files in os.walk(dicom_uuid_dir):
         for filename in files:
@@ -105,7 +105,7 @@ async def api_predict(request: Request) -> JSONResponse:
 
     logger.info(f"Found {len(valid_files)} valid files")
 
-    # Tìm thư mục con chứa file DICOM (nếu có)
+    # Find the sub-folder that contains the DICOM files (if any)
     dicom_dir = dicom_uuid_dir
     for root, _, files in os.walk(dicom_uuid_dir):
         if any(file.endswith(".dcm") for file in files):
@@ -149,18 +149,18 @@ async def api_predict_zip(
     request: Request, file: UploadFile = File(...)
 ) -> JSONResponse:
     """
-    API nhận vào file ZIP chứa ảnh DICOM, chuyển đổi sang NIFTI và thực hiện dự đoán
+    API that takes a ZIP file of DICOM images, converts it to NIFTI and runs the prediction
 
     Args:
         request: Request object
-        file: File ZIP chứa ảnh DICOM
+        file: ZIP file containing DICOM images
 
     Returns:
-        JSONResponse: Kết quả dự đoán bao gồm điểm rủi ro và đường dẫn đến ảnh kết quả
+        JSONResponse: prediction result with the risk score and the paths to the result images
     """
     logger.info("API predict_zip called")
 
-    # Kiểm tra định dạng file
+    # Check the file format
     if not file or file.filename == "":
         return JSONResponse({"error": ERROR_MESSAGES["invalid_file"]}, status_code=400)
 
@@ -171,40 +171,40 @@ async def api_predict_zip(
 
     logger.info(f"File upload: {file.filename}")
 
-    # Tạo UUID duy nhất cho mỗi request
+    # Create a unique UUID for each request
     session_id = str(uuid.uuid4())
     logger.info(f"Session ID: {session_id}")
 
-    # Tạo thư mục cho session này
+    # Create the folders for this session
     dicom_uuid_dir = os.path.join(FOLDERS["UPLOAD"], session_id)
     result_uuid_dir = os.path.join(FOLDERS["RESULTS"], session_id)
 
     try:
-        # Tạo thư mục
+        # Create the folders
         os.makedirs(dicom_uuid_dir, exist_ok=True)
         os.makedirs(result_uuid_dir, exist_ok=True)
 
-        # Đường dẫn lưu file ZIP tạm thời
+        # Path of the temporary ZIP file
         zip_path = os.path.join(FOLDERS["UPLOAD"], f"{session_id}.zip")
 
-        # Lưu file ZIP
+        # Save the ZIP file
         content = await file.read()
         with open(zip_path, "wb") as temp_zip:
             temp_zip.write(content)
 
-        # Giải nén file ZIP
+        # Extract the ZIP file
         try:
             logger.info(f"Extracting file {file.filename} to {dicom_uuid_dir}")
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(dicom_uuid_dir)
 
-            # Xóa file ZIP sau khi giải nén
+            # Delete the ZIP file after extraction
             os.remove(zip_path)
         except zipfile.BadZipFile:
             os.remove(zip_path)
             return JSONResponse({"error": "Invalid ZIP file"}, status_code=400)
 
-        # Kiểm tra các file sau khi giải nén
+        # Check the files after extraction
         valid_files = []
         for root, _, files in os.walk(dicom_uuid_dir):
             for filename in files:
@@ -212,14 +212,14 @@ async def api_predict_zip(
                     valid_files.append(os.path.join(root, filename))
 
         if not valid_files:
-            shutil.rmtree(dicom_uuid_dir)  # Xóa thư mục rỗng
+            shutil.rmtree(dicom_uuid_dir)  # Remove the empty folder
             return JSONResponse(
                 {"error": "No valid files found in the ZIP archive"}, status_code=400
             )
 
         logger.info(f"Found {len(valid_files)} valid files")
 
-        # Tìm thư mục con chứa file DICOM (nếu có)
+        # Find the sub-folder that contains the DICOM files (if any)
         dicom_dir = dicom_uuid_dir
         for root, _, files in os.walk(dicom_uuid_dir):
             if any(file.endswith(".dcm") for file in files):
@@ -245,7 +245,7 @@ async def api_predict_zip(
                 create_gif=True,
             )
 
-            # Kiểm tra thư mục kết quả có tồn tại và có ảnh không
+            # Check that the results folder exists and has images
             overlay_files = os.listdir(result_uuid_dir)
             if not overlay_files:
                 return JSONResponse(
@@ -256,7 +256,7 @@ async def api_predict_zip(
                 f"Found {len(overlay_files)} overlay images in {result_uuid_dir}"
             )
 
-            # Nén kết quả thành file ZIP
+            # Compress the results into a ZIP file
             try:
                 zip_path = create_zip_result(result_uuid_dir, session_id)
                 logger.info(f"Created ZIP file at: {zip_path}")
@@ -272,14 +272,14 @@ async def api_predict_zip(
                     {"error": f"Failed to create zip file: {str(e)}"}, status_code=500
                 )
 
-            # Tạo URL cho file ZIP và GIF
+            # Build the URLs for the ZIP and GIF files
             base_url = str(request.base_url).rstrip("/")
             zip_download_link = f"{base_url}/download_zip/{session_id}"
             gif_download_link = (
                 f"{base_url}/download_gif/{session_id}" if gif_path else None
             )
 
-            # Tạo kết quả trả về
+            # Build the response
             response = {
                 "session_id": session_id,
                 "predictions": pred_dict["predictions"],
@@ -308,7 +308,7 @@ async def api_predict_zip(
 
 @router.get("/download_zip/{session_id}")
 async def download_zip(session_id: str):
-    """API để tải xuống file ZIP chứa ảnh overlay theo Session ID"""
+    """API to download the ZIP of overlay images for a session ID"""
     file_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.zip")
     if os.path.exists(file_path):
         logger.info(f"✅ File found: {file_path}, preparing download...")
@@ -322,8 +322,8 @@ async def download_zip(session_id: str):
 
 @router.get("/download_gif/{session_id}")
 async def download_gif(session_id: str):
-    """API để tải xuống file GIF chứa ảnh overlay theo Session ID"""
-    # Đường dẫn mới: file GIF nằm trong thư mục session_id
+    """API to download the GIF of overlay images for a session ID"""
+    # New path: the GIF file is inside the session_id folder
     session_dir = os.path.join(FOLDERS["RESULTS"], session_id)
     file_path = os.path.join(session_dir, "results.gif")
 
@@ -333,7 +333,7 @@ async def download_gif(session_id: str):
             file_path, filename=f"{session_id}_results.gif", media_type="image/gif"
         )
 
-    # Kiểm tra đường dẫn cũ để tương thích ngược (nếu cần)
+    # Check the old path for backward compatibility (if needed)
     old_path = os.path.join(FOLDERS["RESULTS"], f"{session_id}.gif")
     if os.path.exists(old_path):
         logger.info(f"✅ GIF file found at old path: {old_path}, preparing download...")
@@ -349,7 +349,7 @@ async def download_gif(session_id: str):
 
 @router.get("/preview/{session_id}/{filename}")
 async def preview_file(session_id: str, filename: str):
-    """API để xem trước ảnh overlay"""
+    """API to preview an overlay image"""
     overlay_dir = os.path.join(FOLDERS["RESULTS"], session_id)
     file_path = os.path.join(overlay_dir, filename)
 

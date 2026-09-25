@@ -1,7 +1,7 @@
-"""P4c — phien ban THEO TUNG CA cua CVD (can torch/fastapi: chay trong image CVD).
+"""P4c — CVD's PER-CASE version (needs torch/fastapi: run inside the CVD image).
 
-Trong container:  cd /app && python tests/test_case_version.py
-Tren host khong co torch: pytest tu bo qua (importorskip).
+Inside the container:  cd /app && python tests/test_case_version.py
+On a host without torch: pytest skips it (importorskip).
 """
 import os
 import sys
@@ -12,32 +12,32 @@ try:
     import pytest
     pytest.importorskip("torch")
     pytest.importorskip("fastapi")
-except ImportError:  # chay truc tiep trong container (khong co pytest)
+except ImportError:  # run directly in the container (no pytest)
     pass
 
 import numpy as np  # noqa: E402
 
 
-def test_case_version_them_det_simple_khi_ca_nay_do_tim_simple():
+def test_case_version_appends_det_simple_when_this_case_used_simple():
     import routes
     routes.MODEL_INFO = {"version": "cvd@iter700.src.x+w.y"}
     assert routes._case_version({"heart_detection": "model"}) == "cvd@iter700.src.x+w.y"
     assert routes._case_version({"heart_detection": "simple"}) == "cvd@iter700.src.x+w.y+det.simple"
 
 
-def test_case_version_none_khi_chua_co_dinh_danh():
+def test_case_version_is_none_without_identity():
     import routes
     routes.MODEL_INFO = {"model": "cvd", "loaded": False, "version": None}
     assert routes._case_version({"heart_detection": "simple"}) is None
 
 
 class _Boom:
-    """Model phat hien tim ném loi giua ca (vd loi CUDA)."""
+    """Heart detection model that raises mid-case (e.g. a CUDA error)."""
     def __call__(self, *a, **k):
-        raise RuntimeError("CUDA error: gia lap")
+        raise RuntimeError("CUDA error: simulated")
 
 
-def test_detect_loi_giua_ca_thi_last_method_simple():
+def test_detect_error_mid_case_sets_last_method_simple():
     from heart_detector import HeartDetector
     d = HeartDetector()
     d.model = _Boom()
@@ -47,11 +47,11 @@ def test_detect_loi_giua_ca_thi_last_method_simple():
     assert d.last_method == "simple"
 
 
-def test_detect_khong_nap_duoc_model_thi_last_method_simple(monkeypatch=None):
+def test_detect_model_not_loadable_sets_last_method_simple(monkeypatch=None):
     from heart_detector import HeartDetector
     d = HeartDetector()
     d.model = None
-    d.load_model = lambda: False  # thieu retinanet_heart.pt
+    d.load_model = lambda: False  # retinanet_heart.pt is missing
     img = np.random.rand(4, 64, 64).astype("float32")
     _, _, visual = d.detect(img)
     assert visual is None and d.last_method == "simple"

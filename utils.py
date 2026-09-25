@@ -92,17 +92,17 @@ def cleanup_old_files(folders: List[str], expiry_time=FILE_RETENTION) -> None:
 
 
 def process_attention_scores(cam_data, heart_indices, dicom_names):
-    """Xử lý điểm chú ý để trả về định dạng giống Sybil"""
+    """Process the attention scores into the same format as Sybil"""
     attention_scores = []
 
     for idx, orig_idx in enumerate(heart_indices):
         if idx >= len(cam_data):
             break
 
-        # Lấy slice tương ứng từ cam_data
+        # Take the matching slice from cam_data
         cam_slice = cam_data[idx]
 
-        # Tính điểm chú ý (trung bình giá trị trong slice)
+        # Compute the attention score (mean value in the slice)
         score = float(np.mean(cam_slice))
 
         if score > 0:
@@ -113,10 +113,10 @@ def process_attention_scores(cam_data, heart_indices, dicom_names):
                 }
             )
 
-    # Sắp xếp theo điểm chú ý giảm dần
+    # Sort by attention score, descending
     attention_scores.sort(key=lambda x: x["attention_score"], reverse=True)
 
-    # Tạo kết quả
+    # Build the result
     result = {
         "attention_scores": attention_scores,
         "total_images": len(heart_indices),
@@ -265,7 +265,7 @@ def get_error_message(error_key: str) -> str:
 def save_uploaded_zip(
     file: UploadFile, session_id: str, folder_save: str = FOLDERS["UPLOAD"]
 ) -> str:
-    """Lưu file ZIP tải lên"""
+    """Save the uploaded ZIP file"""
     try:
         zip_path = os.path.join(folder_save, session_id)
 
@@ -300,7 +300,7 @@ def save_uploaded_zip(
 def extract_zip_file(
     zip_path: str, session_id: str, folder_save: str = FOLDERS["UPLOAD"]
 ) -> tuple:
-    """Giải nén ZIP, kiểm tra thư mục con"""
+    """Extract the ZIP and check for a sub-folder"""
     unzip_path = os.path.join(folder_save, session_id)
     os.makedirs(unzip_path, exist_ok=True)
     logger.info(f"Extracting ZIP to: {unzip_path}")
@@ -321,7 +321,7 @@ def extract_zip_file(
 
     os.remove(zip_path)
 
-    # Nếu ZIP chỉ có 1 thư mục con, cập nhật lại đường dẫn
+    # If the ZIP holds a single sub-folder, update the path
     subfolders = [
         f for f in os.listdir(unzip_path) if os.path.isdir(os.path.join(unzip_path, f))
     ]
@@ -333,7 +333,7 @@ def extract_zip_file(
 
 
 def get_valid_files(unzip_path: str) -> List[str]:
-    """Lấy danh sách file hợp lệ (DICOM/PNG)"""
+    """List the valid files (DICOM/PNG)"""
     valid_files = []
     try:
         for root, _, files in os.walk(unzip_path):
@@ -353,7 +353,7 @@ def get_valid_files(unzip_path: str) -> List[str]:
 
 
 def create_zip_result(output_dir, session_id, folder_save=FOLDERS["RESULTS"]):
-    """Nén ảnh dự đoán thành file ZIP"""
+    """Compress the prediction images into a ZIP file"""
     result_zip_path = os.path.join(folder_save, f"{session_id}.zip")
     if IS_DEV == "dev":
         print(f"Creating zip file from {output_dir} to {result_zip_path}")

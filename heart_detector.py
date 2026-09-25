@@ -22,8 +22,8 @@ if detector_path not in sys.path:
 class HeartDetector:
     def __init__(self):
         self.model = None
-        # P4c: cach phat hien tim cua LAN detect() gan nhat: "model" | "simple".
-        # Suy luan chay noi tiep (inference_gate) nen gia tri nay la cua dung ca.
+        # P4c: the heart detection method of the LATEST detect() call: "model" | "simple".
+        # Inference runs one case at a time (inference_gate), so the value belongs to that case.
         self.last_method = None
         # Use the device from MODEL_CONFIG for consistency
         self.device = torch.device(MODEL_CONFIG["DEVICE"])
@@ -107,27 +107,27 @@ class HeartDetector:
 
     def _normalize_for_detection(self, img_slice):
         """
-        Chuẩn hóa ảnh cho việc phát hiện
+        Normalise the image for detection
         """
-        # Cắt giá trị HU trong khoảng phù hợp
+        # Clip HU values to a suitable range
         img_slice = np.clip(img_slice, -1000, 400)
 
-        # Chuẩn hóa về khoảng [0, 1]
+        # Normalise to [0, 1]
         img_normalized = (img_slice - (-1000)) / (400 - (-1000))
 
         return img_normalized
 
     def _simple_heart_detection(self, ct_volume):
         """
-        Phương pháp đơn giản để phát hiện vùng tim khi không có mô hình
+        Simple method to locate the heart region when no model is available
         """
-        # Lấy kích thước ảnh
+        # Get the image dimensions
         depth, height, width = ct_volume.shape
 
-        # Tìm slice giữa
+        # Find the middle slice
         mid_slice = depth // 2
 
-        # Giả định vùng tim nằm ở giữa ảnh, chiếm khoảng 60% diện tích
+        # Assume the heart sits in the middle of the image, covering about 60% of the area
         center_x, center_y = width // 2, height // 2
         heart_width = int(width * 0.6)
         heart_height = int(height * 0.6)
@@ -137,7 +137,7 @@ class HeartDetector:
         x_max = min(width, center_x + heart_width // 2)
         y_max = min(height, center_y + heart_height // 2)
 
-        # Giả định tim xuất hiện trong 60% số slice ở giữa
+        # Assume the heart appears in the middle 60% of the slices
         z_min = max(0, depth // 2 - int(depth * 0.3))
         z_max = min(depth, depth // 2 + int(depth * 0.3))
 
@@ -145,38 +145,38 @@ class HeartDetector:
 
     def detect(self, whole_img):
         """
-        Phát hiện tim từ ảnh CT
+        Detect the heart in a CT image
 
         Args:
-            whole_img: Ảnh CT đã được chuẩn hóa
+            whole_img: normalised CT image
 
         Returns:
-            bbox_list: Danh sách bounding box cho mỗi slice
-            bbox_selected: Danh sách chỉ định slice nào chứa tim
-            visual_bbox: Danh sách ảnh đã được vẽ bounding box
+            bbox_list: bounding box for each slice
+            bbox_selected: which slices contain the heart
+            visual_bbox: images with the bounding box drawn
         """
-        self.last_method = None  # P4c: khong de gia tri cua ca truoc sot lai
+        self.last_method = None  # P4c: do not leave the previous case's value behind
         if self.model is None:
             if not self.load_model():
-                print("Không thể tải mô hình, sử dụng phương pháp đơn giản")
-                # Trả về kết quả giả lập khi không có mô hình
+                print("Could not load the model, using the simple method")
+                # Return an approximate result when there is no model
                 bbox = self._simple_heart_detection(whole_img)
 
-                # Tạo danh sách bounding box giả lập
+                # Build the approximate bounding boxes
                 depth, height, width = whole_img.shape
                 x_min, y_min, z_min, x_max, y_max, z_max = bbox
 
-                # Tạo bbox_list với kích thước bằng số lượng slice
+                # Build bbox_list with one entry per slice
                 bbox_list = np.zeros((depth, 4))
                 bbox_selected = np.zeros(depth)
 
-                # Đánh dấu các slice chứa tim
+                # Mark the slices that contain the heart
                 for i in range(z_min, z_max + 1):
                     if 0 <= i < depth:
                         bbox_list[i] = [x_min, y_min, x_max, y_max]
                         bbox_selected[i] = 1
 
-                # Không tạo visual_bbox khi sử dụng phương pháp đơn giản
+                # No visual_bbox when the simple method is used
                 self.last_method = "simple"
                 return bbox_list, bbox_selected, None
 
@@ -229,19 +229,19 @@ class HeartDetector:
             return bbox_list, bbox_selected, visual_bbox
 
         except Exception as e:
-            print(f"Lỗi khi phát hiện tim: {e}")
-            # Sử dụng phương pháp đơn giản khi có lỗi
+            print(f"Heart detection error: {e}")
+            # Fall back to the simple method on error
             bbox = self._simple_heart_detection(whole_img)
 
-            # Tạo danh sách bounding box giả lập
+            # Build the approximate bounding boxes
             depth, height, width = whole_img.shape
             x_min, y_min, z_min, x_max, y_max, z_max = bbox
 
-            # Tạo bbox_list với kích thước bằng số lượng slice
+            # Build bbox_list with one entry per slice
             bbox_list = np.zeros((depth, 4))
             bbox_selected = np.zeros(depth)
 
-            # Đánh dấu các slice chứa tim
+            # Mark the slices that contain the heart
             for i in range(z_min, z_max + 1):
                 if 0 <= i < depth:
                     bbox_list[i] = [x_min, y_min, x_max, y_max]
@@ -252,36 +252,36 @@ class HeartDetector:
 
     def debug_detection(self, ct_volume):
         """
-        Hàm debug để kiểm tra quá trình phát hiện tim
+        Debug helper to inspect the heart detection process
 
         Args:
-            ct_volume: Ảnh CT đầu vào
+            ct_volume: input CT image
         """
         if self.model is None:
-            print("Không thể debug: Mô hình chưa được tải")
+            print("Cannot debug: the model is not loaded")
             return
 
-        # Chọn một số slice để debug
+        # Pick a few slices to debug
         depth = ct_volume.shape[0]
         slice_indices = [depth//4, depth//2, 3*depth//4]
 
         for i in slice_indices:
             if 0 <= i < ct_volume.shape[0]:
-                print(f"Debug detection cho slice {i}")
+                print(f"Debug detection for slice {i}")
 
-                # Chuẩn bị input
+                # Prepare the input
                 img_slice = ct_volume[i]
                 img_normalized = self._normalize_for_detection(img_slice)
 
-                # Chuẩn bị input cho mô hình
+                # Prepare the model input
                 pic = np.tile(np.expand_dims(img_normalized, axis=2), (1, 1, 3))
                 torch_pic = torch.from_numpy(pic).to(self.device).float()
                 torch_pic = torch_pic.unsqueeze(0).permute(0, 3, 1, 2).contiguous()
 
-                # Lưu ảnh để kiểm tra trực quan
+                # Save the image for visual inspection
                 plt.imsave(f"debug_detector_slice_{i}.png", img_normalized, cmap="gray")
 
-                # Thực hiện inference
+                # Run inference
                 try:
                     with torch.no_grad():
                         print(f"Input tensor shape: {torch_pic.shape}, device: {torch_pic.device}")
@@ -292,7 +292,7 @@ class HeartDetector:
                         print(f"Classification shape: {classification.shape}")
                         print(f"Transformed anchors shape: {transformed_anchors.shape}")
 
-                        # Lấy kết quả tốt nhất
+                        # Take the best result
                         if scores.size(0) > 0:
                             best_score_idx = torch.argmax(scores)
                             best_score = scores[best_score_idx].item()
@@ -300,8 +300,8 @@ class HeartDetector:
                             print(f"Best score: {best_score:.4f}")
                             print(f"Best bbox: {best_bbox}")
                         else:
-                            print("Không phát hiện được đối tượng nào")
+                            print("No object detected")
 
                 except Exception as e:
-                    print(f"Lỗi khi thực hiện inference: {e}")
+                    print(f"Inference error: {e}")
 
