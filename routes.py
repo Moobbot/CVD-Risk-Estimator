@@ -11,7 +11,9 @@ from fastapi.responses import JSONResponse, FileResponse
 from config import FOLDERS, ERROR_MESSAGES
 from logger import setup_logger
 from utils import create_zip_result
-from call_model import predict
+from fastapi.concurrency import run_in_threadpool
+from call_model import predict as _predict_unserialized
+from inference_gate import serialized, status as inference_status
 
 # Cấu hình SimpleITK
 sitk.ProcessObject.SetGlobalDefaultThreader("platform")
@@ -25,6 +27,16 @@ router = APIRouter()
 # Global variables for models (will be set by the main app)
 heart_detector = None
 model = None
+
+# Moi lan suy luan chay noi tiep (xem inference_gate.py).
+predict = serialized(_predict_unserialized)
+
+
+@router.get("/health")
+async def health() -> JSONResponse:
+    """Song hay chet, ranh hay ban. Tra loi ngay ca khi dang suy luan vi
+    suy luan chay trong threadpool, khong chan event loop."""
+    return JSONResponse({"status": "ok", "model_loaded": model is not None, **inference_status()})
 
 
 @router.post("/api_predict")
@@ -79,7 +91,8 @@ async def api_predict(request: Request) -> JSONResponse:
         )
 
     try:
-        pred_dict, attention_info, gif_path = predict(
+        pred_dict, attention_info, gif_path = await run_in_threadpool(
+            predict,
             dicom_dir=dicom_dir,
             output_dir=result_uuid_dir,
             heart_detector=heart_detector,
@@ -193,7 +206,8 @@ async def api_predict_zip(
 
         # Run prediction
         try:
-            pred_dict, attention_info, gif_path = predict(
+            pred_dict, attention_info, gif_path = await run_in_threadpool(
+                predict,
                 dicom_dir=dicom_dir,
                 output_dir=result_uuid_dir,
                 heart_detector=heart_detector,
