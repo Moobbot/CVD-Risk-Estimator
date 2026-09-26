@@ -88,11 +88,10 @@ docker-compose down
 
 The Docker configuration includes:
 
-- Python 3.10 base image
-- Required system libraries
-- Virtual environment for clean dependency management
-- Optimized image size using multi-stage builds
-- Non-root user for improved security
+- `python:3.10-slim` base image, with only the system libraries OpenCV needs
+- A `torch-base` stage identical to Sybil's: built together, torch and the CUDA libraries are stored once
+- No pip download cache kept in the image
+- Runs as root (the Dockerfile sets no `USER`)
 - Volume mounts for persistent data storage
 - Environment variable configuration
 - GPU support using NVIDIA Container Toolkit

@@ -40,9 +40,11 @@ docker-compose down
 
 The current image (`Dockerfile`):
 
-- Uses the `python:3.10` base image (single stage, runs as root)
-- Installs the required system libraries (ffmpeg, libsm6, libxext6)
-- Installs the Python dependencies with `python setup.py`
+- Uses the `python:3.10-slim` base image and runs as root
+- Starts with a `torch-base` stage (system libraries OpenCV needs, torch 2.5.1 + torchvision 0.20.1
+  with CUDA 12.1) that is identical in Sybil's Dockerfile: built together, the two images share it
+- Installs the Python dependencies from `requirements.txt`, then downloads the two checkpoints into
+  `/app/checkpoint` with `python setup.py --skip-packages`
 - Is configured through environment variables
 - Supports the GPU through the NVIDIA Container Toolkit
 

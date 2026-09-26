@@ -40,11 +40,11 @@ docker-compose down
 
 Cấu hình Docker bao gồm:
 
-- Image cơ sở Python 3.10
-- Các thư viện hệ thống cần thiết (ffmpeg, libsm6, libxext6)
-- Môi trường ảo để quản lý dependencies sạch sẽ
-- Tối ưu kích thước image bằng multi-stage builds
-- Người dùng không phải root để tăng cường bảo mật
+- Image cơ sở `python:3.10-slim`, chạy bằng root
+- Stage `torch-base` (thư viện hệ thống cho OpenCV, torch 2.5.1 + torchvision 0.20.1 bản CUDA 12.1)
+  giống hệt trong Dockerfile của Sybil: build cùng nhau thì hai image dùng chung stage này
+- Cài dependencies từ `requirements.txt`, rồi tải hai checkpoint vào `/app/checkpoint` bằng
+  `python setup.py --skip-packages`
 - Volume mounts để lưu trữ dữ liệu liên tục
 - Cấu hình biến môi trường
 - Hỗ trợ GPU bằng NVIDIA Container Toolkit
@@ -145,18 +145,18 @@ Nếu bạn gặp lỗi khi tải mô hình, hãy đảm bảo:
 
 Dockerfile đã được tối ưu hóa để giảm kích thước image bằng cách:
 
-1. Sử dụng multi-stage build để tách biệt môi trường build và runtime
-2. Sử dụng image cơ sở slim để giảm kích thước
-3. Chỉ cài đặt các gói cần thiết và dọn dẹp cache apt sau khi cài đặt
+1. Dùng image cơ sở slim (`python:3.10-slim`), chỉ cài các thư viện hệ thống OpenCV cần và dọn cache apt
+2. Không giữ cache tải về của pip trong image (`PIP_NO_CACHE_DIR`)
+3. Stage `torch-base` giống hệt stage của Sybil: build cùng nhau thì torch và các thư viện CUDA chỉ lưu một lần
 4. Thêm các file lớn vào `.dockerignore`
 
 ### Bảo mật
 
 Ứng dụng đã được cải thiện bảo mật bằng cách:
 
-1. Chạy ứng dụng với người dùng không phải root (appuser)
-2. Chỉ cài đặt các gói cần thiết cho runtime
-3. Sử dụng các quyền tối thiểu cho các thư mục
+1. Chỉ cài đặt các gói cần thiết cho runtime
+
+Container hiện chạy bằng root (Dockerfile không khai báo `USER`).
 
 ### Cải thiện hiệu suất
 
