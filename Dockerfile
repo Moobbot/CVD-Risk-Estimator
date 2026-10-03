@@ -35,20 +35,17 @@ COPY requirements.txt setup.py ./
 
 RUN pip install -r requirements.txt
 
-# The two checkpoints (~280 MB: heart detector + CVD encoder) are downloaded into /app/checkpoint
-# at build time, as before: the cvd-checkpoint volume is seeded from them when it is first created.
-# They must be the files the reference results were measured with. setup.py saves whatever the
-# link returns and keeps a download cut short, so a file that is there but differs stops the build
-# (a failed step is not cached: the next build downloads again). A file that could not be downloaded
-# at all only warns: an existing cvd-checkpoint volume already has it, and the update must not
-# depend on reaching Dropbox.
-RUN python setup.py --skip-packages \
-    && cd checkpoint \
-    && check() { \
-         if [ ! -e "$2" ]; then echo "WARNING: $2 was not downloaded: a NEW cvd-checkpoint volume would not have it"; \
-         else echo "$1  $2" | sha256sum -c - || { echo "ERROR: $2 is not the expected checkpoint (download cut short or changed)"; exit 1; }; fi; } \
-    && check dccf38ef25b478dcb77a2d86a4ea4fd3a6beccd9f9776c648d9edd42da39982d retinanet_heart.pt \
-    && check 5d591131d18c9b7e23d3235f82f5550261d14b968d9f4950c2e76c9c5ec0fc1e NLST-Tri2DNet_True_0.0001_16-00700-encoder.ptm
+# The two checkpoints (~280 MB: heart detector + CVD encoder) are downloaded at build time, as before,
+# and must be the files the reference results were measured with: a file that was downloaded but
+# differs (a download cut short, an error page) stops the build (a failed step is not cached: the
+# next build downloads again); a file that could not be downloaded at all only warns, and that
+# layer is cached without the file: `docker compose build --no-cache cvd` downloads again.
+# They go to /app/checkpoint-seed, NOT /app/checkpoint: docker-compose mounts a host folder on
+# /app/checkpoint, which hides whatever the image has there. At start-up the service copies a
+# missing file from the seed into the mounted folder (checkpoints.py), so an empty folder needs
+# neither a manual step nor internet access.
+COPY checkpoints.py ./
+RUN python checkpoints.py --seed /app/checkpoint-seed
 
 # Copy the rest of the application
 COPY . .

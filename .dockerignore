@@ -54,9 +54,13 @@ logs/
 uploads/
 results/
 
-# Large files and checkpoints
-# Uncomment if you want to exclude model checkpoints from the Docker image
-# checkpoint/
+# Model weights. docker-compose mounts ./checkpoint from the host, so after the first start that
+# folder holds the weights (~280 MB): `COPY . .` must not copy them into the image, where the
+# mount would hide them anyway. The image keeps its own verified copy in /app/checkpoint-seed.
+checkpoint/*
+!checkpoint/.gitignore
+!checkpoint/README.md
+checkpoint-seed/
 
 # Debug files
 debug_*.png

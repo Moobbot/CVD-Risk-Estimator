@@ -18,6 +18,7 @@ from config import (
 from logger import setup_logger
 from utils import cleanup_old_files, get_local_ip
 from call_model import load_model
+from checkpoints import ensure_checkpoints, summary as checkpoint_summary
 from model_info import build_info, source_digest
 from config import MODEL_CONFIG
 
@@ -40,6 +41,18 @@ async def lifespan(_: FastAPI):
 
     # Only load models if they haven't been loaded yet
     if heart_detector is None or model is None:
+        # The checkpoint folder is mounted from the host and is empty on a fresh checkout: a
+        # missing file is copied from the image, or downloaded (checkpoints.py). Files already in
+        # the folder are used as they are. Done here, not in call_model.py, which is part of the
+        # model version identity: how the files get into the folder is not inference code.
+        # The summary also goes to stdout: outside dev the loggers write to files only, and
+        # `docker compose logs cvd` is where an operator looks.
+        try:
+            print(checkpoint_summary(ensure_checkpoints(FOLDERS["CHECKPOINT"], log=logger)), flush=True)
+        except Exception as e:
+            logger.error(f"Could not prepare the checkpoint folder: {str(e)}")
+            print(f"Could not prepare the checkpoint folder: {str(e)}", flush=True)
+
         try:
             logger.info("Loading models on application startup...")
             heart_detector, model = load_model()
